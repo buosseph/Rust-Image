@@ -74,7 +74,15 @@ impl PPM {
                          * byte data as characters until end of file,
                          * which I believe it does. Maybe creating a buffer
                          * overflow? How can that be done with just printing 
-                         * charactesr?
+                         * characters?
+                         *
+                         *
+                         * Conclusion: Not a bug at all it turns out. The "terminal
+                         * interprets certain sequences of bytes as control codes",
+                         * turns out I ended up emmiting one or more of these codes
+                         * which resulting in the unusal print out in bash. This is
+                         * easily fixed by using the reset command (if you don't want
+                         * to reopen the terminal)
                          */
                         //println!("{}", str::from_byte(byte));
                         continue;
