@@ -1,16 +1,16 @@
 use std::slice::from_elem;
+use std::slice;
 use std::path::posix::{Path};
 use std::io::File;
 use std::os;
 use std::str;
+use std::uint;
 
-// From http://rosettacode.org/wiki/Bitmap/Write_a_PPM_file#Rust
 pub struct Pixel {
   r: u8,
   g: u8,
   b: u8,
 }
-
 pub struct RGBA_Pixel {
   r: u8,
   g: u8,
@@ -46,49 +46,123 @@ impl PPM {
     PPM{height: height, width: width, data: buffer}
   }
 
+  pub fn read_image(image_path_str: &str) -> PPM {
+    let path = Path::new(image_path_str);
 
-  pub fn read_image(&self, path: Path) {
-    // let path = Path::new(image_path_str);
-    // let mut image = File::open(&path).unwrap();
+    let mut p_num: ~[u8] = ~[0 as u8, 0 as u8];
+    let mut comment_bytes: ~[u8] = ~[];
+    let mut width_bytes: ~[u8] = ~[];
+    let mut height_bytes: ~[u8] = ~[];
+    let mut color_mode_bytes: ~[u8] = ~[];
+    let mut image_data_bytes: ~[u8] = ~[];
 
-    // let mut w: uint = 0;
-    // let mut h: uint = 0;
-    // let size = 3 * h * w;
-    // let mut data: ~[u8] = from_elem(size, 0u8);
+    match File::open(&path) {
+      Ok(mut image) => {
+        // Find P Number
+        match image.read(p_num) {
+          Ok(num_of_bytes) =>  {
+            // Works, to view hex in array need to iterate and println!("{:x}")
+            // for i in range(0, p_num.len()) {
+            //   let byte = p_num[i];
+            //   println!("{:x}", byte);
+            // }
+            match str::from_utf8(p_num) {
+              Some(mode)  => {println!("{}", mode)},    // Check if valid header
+              None        => {fail!("Something went wrong converting bytes to str (line 65)")}
+            }
+          },
+          Err(e) => {println!("Something went wrong: {}", e)}
+        }
 
-    // match image.read_byte() {
-    //   Ok(byte)   => {
+        // Getting header data
+        let mut isComment: bool = false;
+        let mut isWidth: bool = false;
+        let mut isHeight: bool = false;
+        let mut isColorMode: bool = false;
+        loop {
+          match image.read_byte() {
+            Ok(byte) =>  {
+              let byte_string = str::from_byte(byte);
+
+              // Checking for comment
+              if str::eq(&byte_string, &~"#") {
+                isComment = true;
+              }
+              if isComment && str::eq(&byte_string, &~"\n") {
+                comment_bytes.push(byte);
+                isComment = false;
+                isWidth = true;
+                continue;
+              }
+              if isComment {
+                comment_bytes.push(byte);
+              }
+            
+              // Read width, ends at space or newline
+              if isWidth && (str::eq(&byte_string, &~"\n") || str::eq(&byte_string, &~" ")){
+                isWidth = false;
+                isHeight = true;
+                continue;
+              }
+              if isWidth {
+                width_bytes.push(byte);
+              }
+
+              // Read height, ends at space or newline
+              if isHeight && (str::eq(&byte_string, &~"\n") || str::eq(&byte_string, &~" ")) {
+                isHeight = false;
+                isColorMode = true;
+                continue;
+              }
+              if isHeight {
+                height_bytes.push(byte);
+              }
+
+              // Read color mode
+              if isColorMode && (str::eq(&byte_string, &~"\n") || str::eq(&byte_string, &~" ")) {
+                isColorMode = false;
+                break;
+              }
+              if isColorMode {
+                color_mode_bytes.push(byte);
+              }
+
+              if str::eq(&byte_string, &~"\n") {
+                continue;
+              }
+            },
+
+            Err(e) => {
+              println!("Error reading file header: {}", e);
+              break;
+            }
+          }
+        }
+        // println!("Comment: {}", str::from_utf8(comment_bytes).unwrap());
+        // println!("Width: {}", str::from_utf8(width_bytes).unwrap());
+        // println!("Height: {}", str::from_utf8(height_bytes).unwrap());
+        // println!("Color Mode: {}", str::from_utf8(color_mode_bytes).unwrap());
         
-    //     if byte == 0x50 {
-    //       println!("P: {:x}", byte);
-    //     }
-    //   },
-    //   Err(EOF)  => {
-    //     println!("End of file"); 
-    //     break;}
-    // }
+        // Would want a more appropriate way of filling image_data_bytes
+        loop {
+          match image.read_byte() {
+            Ok(byte) => {image_data_bytes.push(byte)},
+            Err(e)   => {break;}
+          }
+        }
+      },
+      Err(e)    => {println!("Error opening file: {}", e)}
+    };
 
-    // // Use to fill buffer
-    // loop {
-    //   match image.read_byte() {
-    //     Ok(byte)   => {
-          
-    //       if byte == 0x50 {
-    //         println!("P: {:x}", byte);
-    //       }
-    //     },
-    //     Err(EOF)  => {
-    //       println!("End of file"); 
-    //       break;}
-    //   }
-    // }
-
-    // Gets Px header
-    // println!("{:x}", image.read_byte().unwrap());
-    // println!("{:x}", image.read_byte().unwrap());
-
-    // If 0x20 || 0x0A, ignore byte (is space or newline)
-    // If 0x23, ignore all bytes until newline (0x0A)
+    let mut width = match uint::parse_bytes(width_bytes, 10){
+      Some(number) => {number},
+      None    => {0 as uint}
+    };
+    let mut height = match uint::parse_bytes(height_bytes, 10){
+      Some(number) => {number},
+      None    => {0 as uint}
+    };
+    PPM{height: height, width: width, data: image_data_bytes}
   }
 
  
@@ -132,27 +206,56 @@ impl PPM {
   pub fn write_file(&self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
-    let header = format!("P6 {} {} 255\n", self.height, self.width);
+    let header = format!("P6 {} {} 255\n", self.width, self.height);
     file.write(header.as_bytes());
     file.write(self.data);
     true
   }
-
-  // pub fn new_test_image(&self) -> PPM {
-  //   let TEST_WIDTH = 514;
-  //   let TEST_HEIGHT = 600;
-  //   let size = 3 * TEST_WIDTH * TEST_HEIGHT;
-  //   let data_str = "";
-  //   PPM{height: height, width: width, data: buffer}
-  // }
 }
 
+impl Inversible for PPM {
+  fn inverse(&mut self) {
+    // Brute Force
+    for i in range(0, self.data.len()) {
+      self.data[i] = 255 - self.data[i];
+    }
+
+  }
+}
+
+
+fn main() {
+  let args = os::args();
+  if args.len() < 2 {
+    fail!("Image path not provided");
+  }
+  else {
+    println!("Path to image: {}", args[1]);
+    let mut ppm_image = PPM::read_image(args[1]);
+    ppm_image.inverse();
+    ppm_image.write_file("output.ppm");
+  }
+
+}
+
+
+
+
+
+
+
+
+
+// Need better understand of byte-wise file writing before implementing
 pub struct PNG {
   width: uint,
   height: uint,
   data: ~[u8]
 }
 impl PNG {
+  // All notes based on W3 Documentation:
+  // http://www.w3.org/TR/PNG/#5PNG-file-signature
+
   // Magic Number (ASCII/decimal):
   //    89 P N G 0d 0a 1a 0a
   // or 
@@ -168,6 +271,20 @@ impl PNG {
   // IDAT Chunk: 0x49 0x44 0x41 0x54
   // IEND Chunk: 0x49 0x45 0x4E 0x44 
   // These chunks are absolutely required to render PNG images
+
+  /* IHDR                 (Remember: 2 hex digits = 1 byte)
+     Width: 4 bytes       (1px = 0x00000001)
+     Height: 4 bytes
+     Bit depth: 1 byte              Must be 0x1, 0x2, 0x4, 0x8, or 0x16, depends on color type
+     Color type: 1 byte             Must be 0x00, 0x02, 0x03, 0x04 or 0x06
+     Compression method: 1 byte     Not implementing, set to 0x00
+     Filter method: 1 byte          Not implementing, set to 0x00
+     Interlace method: 1 byte       Not implementing, set to 0x00
+  */
+  // fn png_IHDR(width: uint, height: uint) -> ~[u8]{
+  //   let IHDR: ~[u8] = [0x49, 0x48, 0x44, 0x52, ];
+  //   return ()
+  // }
 
   /* PLTE Chunk is ...
    * Required for indexed color,
@@ -191,40 +308,4 @@ impl PNG {
 
   //   true
   // }
-}
-
-
-impl Inversible for PPM {
-  fn inverse(&mut self) {
-    // Brute Force
-    for i in range(0, self.data.len()) {
-      self.data[i] = 255 - self.data[i];
-    }
-
-  }
-}
-
-
-fn main() {
-  let TEST_IMAGE = PPM::new(524, 600);
-
-  let image = PNG::new(0,0);
-
-  // let mut image = PPM::new(360, 240);
-
-  // for x in range(0, 360){
-  //   for y in range(0,240){
-  //     image.set_pixel(x as uint,y as uint, Pixel{r: 255, g: 255, b: 255});
-  //   }
-  // }
-  // image.inverse();
-  // image.write_file("test.ppm");
-
-
-
-
-  // For later use, reading .ppm files for processing
-  // let argv = os::args();
-  // let image_path_str = argv[1];
-
 }
