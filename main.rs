@@ -1,3 +1,6 @@
+extern crate time;
+extern crate sync;
+
 use std::slice::from_elem;
 use std::slice;
 use std::path::posix::{Path};
@@ -5,49 +8,856 @@ use std::io::File;
 use std::os;
 use std::str;
 use std::uint;
+use std::task;
+use sync::{Arc, RWLock};
 
-pub struct Pixel {
+pub struct RGB_Pixel {
   r: u8,
   g: u8,
   b: u8,
 }
-// pub struct RGBA_Pixel {
-//   r: u8,
-//   g: u8,
-//   b: u8,
-//   a: u8,
-// }
+pub struct BGR_Pixel {
+  b: u8,
+  g: u8,
+  r: u8,
+}
+pub enum ColorType {
+  RGB8, BRG8
+}
 
-// pub struct Image {
-//   width: uint,
-//   height: uint,
-//   pixels: ~[u8]
-// }
-// impl Image {
-//   pub fn new(width: uint, height: uint) -> Image {
-//     let pixel_array: ~[RGBA_Pixel] = ~[];
-//     Image {width: width, height: height, pixels: pixel_array}
-//   }
-//}
+pub struct Image {
+  width: uint,
+  height: uint,
+  color_type: ColorType,
+  data: ~[u8],
+}
 
 // Image processing traits and functions
-trait Inversible {
-  fn inverse(&mut self);
+trait PointProcessor {
+  fn negative(&mut self);
+  fn brighten(&mut self, bias: int);
+  fn contrast(&mut self, gain: f32);
+  fn saturate(&mut self, gain: f32);
+  fn grayscale(&mut self);
 }
-impl Inversible for PPM {
-  fn inverse(&mut self) {
-    // Brute Force
-    for i in range(0, self.data.len()) {
+impl PointProcessor for PPM {
+  fn negative(&mut self) {
+    // Brute force        Time: 19257397 ns
+    // let start = time::precise_time_ns();
+    // let mut i = 0;
+    // for i in range(0, self.data.len()) {
+    //   self.data[i] = 255 - self.data[i];
+    // }
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of brute force algorithm: {}", time);
+
+    // Vectorize by 8     Time:  5118442 ns
+    let start = time::precise_time_ns();
+    let mut i = 0;
+    let length = self.data.len();
+    let remainder = length % 8;
+    let difference = length - remainder;
+    while i < difference {
       self.data[i] = 255 - self.data[i];
+      self.data[i+1] = 255 - self.data[i+1];
+      self.data[i+2] = 255 - self.data[i+2];
+      self.data[i+3] = 255 - self.data[i+3];
+      self.data[i+4] = 255 - self.data[i+4];
+      self.data[i+5] = 255 - self.data[i+5];
+      self.data[i+6] = 255 - self.data[i+6];
+      self.data[i+7] = 255 - self.data[i+7];
+      i += 8;
+    }
+    if remainder > 0 {
+      for i in range(difference, length) {
+        self.data[i] = 255 - self.data[i];
+      }
+    }
+    let end = time::precise_time_ns();
+    let time = end as uint - start as uint;
+    println!("Time of vectorized algorithm: {}", time);
+  }
+  fn brighten(&mut self, bias: int) {
+    // NOTE: For brightness, there are two ways of implementing: adding values to RGB values via a int bias value, or multiplying RGB values with a f32 gain value
+
+    // Brute force        Time: 33111543 ns
+    // let start = time::precise_time_ns();
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+            let mut red = pixel.r as int + bias;
+            let mut green = pixel.g as int + bias;
+            let mut blue = pixel.b as int + bias;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of algorithm: {}", time);
+  }
+  fn contrast(&mut self, gain: f32) {
+    let mut total_luminance: f32 = 0.;
+
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+            let mut red     = pixel.r as f32;
+            let mut green   = pixel.g as f32;
+            let mut blue    = pixel.b as f32;
+            let luminance: f32 = (0.2126 * red  + 0.7152 * green  + 0.0722 * blue);
+            total_luminance += luminance;
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+
+    let mean_luminance: f32 = total_luminance/((self.width*self.height) as f32);
+
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+            let mut red     = pixel.r as int;
+            let mut green   = pixel.g as int;
+            let mut blue    = pixel.b as int;
+
+            let dRed: f32 = red as f32 - mean_luminance;
+            let dGreen: f32 = green as f32 - mean_luminance;
+            let dBlue: f32 = blue as f32 - mean_luminance;
+
+            red     = (red as f32 - dRed * (1. - gain)) as int;
+            green   = (green as f32 - dGreen * (1. - gain)) as int;
+            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+  }
+  // Aliasing introduced
+  fn saturate(&mut self, gain: f32) {
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+
+            let mut red     = pixel.r as int;
+            let mut green   = pixel.g as int;
+            let mut blue    = pixel.b as int;
+
+            let luminance: f32 = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32);
+            let dRed: f32 = red as f32 - luminance;
+            let dGreen: f32 = green as f32 - luminance;
+            let dBlue: f32 = blue as f32 - luminance;
+
+            red     = (red as f32 - dRed * (1. - gain)) as int;
+            green   = (green as f32 - dGreen * (1. - gain)) as int;
+            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+         
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+  }
+  fn grayscale(&mut self) {
+    // NOTE: not optimized for format encoding, will be addressed later
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+            let mut red     = pixel.r as int;
+            let mut green   = pixel.g as int;
+            let mut blue    = pixel.b as int;
+
+            let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
+            if luminance < 0 {
+              luminance = 0;
+            }
+            if luminance > 255 {
+              luminance = 255;
+            }
+            
+            self.set_pixel(x,y, RGB_Pixel{r: luminance as u8, g: luminance as u8, b: luminance as u8});
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
     }
   }
 }
-impl Inversible for BMP {
-  fn inverse(&mut self) {
-    // Brute Force
-    for i in range(0, self.data.len()) {
+impl PointProcessor for BMP {
+  fn negative(&mut self) {
+    // Brute force        Time: 19257397 ns
+    // let start = time::precise_time_ns();
+    // let mut i = 0;
+    // for i in range(0, self.data.len()) {
+    //   self.data[i] = 255 - self.data[i];
+    // }
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of brute force algorithm: {}", time);
+
+    // Vectorize by 8     Time:  5118442 ns
+    let start = time::precise_time_ns();
+    let mut i = 0;
+    let length = self.data.len();
+    let remainder = length % 8;
+    let difference = length - remainder;
+    while i < difference {
       self.data[i] = 255 - self.data[i];
+      self.data[i+1] = 255 - self.data[i+1];
+      self.data[i+2] = 255 - self.data[i+2];
+      self.data[i+3] = 255 - self.data[i+3];
+      self.data[i+4] = 255 - self.data[i+4];
+      self.data[i+5] = 255 - self.data[i+5];
+      self.data[i+6] = 255 - self.data[i+6];
+      self.data[i+7] = 255 - self.data[i+7];
+      i += 8;
     }
+    if remainder > 0 {
+      for i in range(difference, length) {
+        self.data[i] = 255 - self.data[i];
+      }
+    }
+    let end = time::precise_time_ns();
+    let time = end as uint - start as uint;
+    println!("Time of vectorized algorithm: {}", time);
+  }
+  fn brighten(&mut self, bias: int) {
+    // NOTE: For brightness, there are two ways of implementing: adding values to RGB values via a int bias value, or multiplying RGB values with a f32 gain value
+
+    // Brute force        Time: 33111543 ns
+    // let start = time::precise_time_ns();
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+            let mut red = pixel.r as int + bias;
+            let mut green = pixel.g as int + bias;
+            let mut blue = pixel.b as int + bias;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of algorithm: {}", time);
+  }
+  fn contrast(&mut self, gain: f32) {
+    let mut total_luminance: f32 = 0.;
+
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+            let mut red     = pixel.r as f32;
+            let mut green   = pixel.g as f32;
+            let mut blue    = pixel.b as f32;
+            let luminance: f32 = (0.2126 * red  + 0.7152 * green  + 0.0722 * blue);
+            total_luminance += luminance;
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+
+    let mean_luminance: f32 = total_luminance/((self.width*self.height) as f32);
+
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+            let mut red     = pixel.r as int;
+            let mut green   = pixel.g as int;
+            let mut blue    = pixel.b as int;
+
+            let dRed: f32 = red as f32 - mean_luminance;
+            let dGreen: f32 = green as f32 - mean_luminance;
+            let dBlue: f32 = blue as f32 - mean_luminance;
+
+            red     = (red as f32 - dRed * (1. - gain)) as int;
+            green   = (green as f32 - dGreen * (1. - gain)) as int;
+            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+  }
+  // Aliasing introduced
+  fn saturate(&mut self, gain: f32) {
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+
+            let mut red     = pixel.r as int;
+            let mut green   = pixel.g as int;
+            let mut blue    = pixel.b as int;
+
+            let luminance: f32 = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32);
+            let dRed: f32 = red as f32 - luminance;
+            let dGreen: f32 = green as f32 - luminance;
+            let dBlue: f32 = blue as f32 - luminance;
+
+            red     = (red as f32 - dRed * (1. - gain)) as int;
+            green   = (green as f32 - dGreen * (1. - gain)) as int;
+            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+         
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+  }
+  fn grayscale(&mut self) {
+    // NOTE: not optimized for format encoding, will be addressed later
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+        match self.get_pixel(x,y){
+          Some(pixel) => {
+            let mut red     = pixel.r as int;
+            let mut green   = pixel.g as int;
+            let mut blue    = pixel.b as int;
+
+            let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
+            if luminance < 0 {
+              luminance = 0;
+            }
+            if luminance > 255 {
+              luminance = 255;
+            }
+            
+            self.set_pixel(x,y, RGB_Pixel{r: luminance as u8, g: luminance as u8, b: luminance as u8});
+          },
+          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        }
+      }
+    }
+  }
+}
+
+trait Convolution {
+  fn edge(&mut self);
+  fn blur(&mut self);
+  fn emboss(&mut self);
+}
+impl Convolution for PPM {
+  // Works
+  fn blur(&mut self) {
+    // Brute force        Time: 264835676 ns
+    // let start = time::precise_time_ns();
+  
+    let kernel = [[1, 1, 1], [1, 1, 1], [1, 1, 1]];
+    let kernel_sum = 9;
+    let mut kernel_center_x: uint = 3/2;
+    let mut kernel_center_y: uint = 3/2;
+
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+
+        let mut red_sum = 0;
+        let mut green_sum = 0;
+        let mut blue_sum = 0;
+
+        for kernel_row in range(0, 3){
+          for kernel_column in range(0, 3){
+
+            let kx: int = kernel_row - (kernel_center_y - x) as int;
+            let ky: int = kernel_column - (kernel_center_x - y) as int;
+
+            if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
+
+              let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
+              match self.get_pixel(kx as uint, ky as uint) {
+                Some(pixel) => {
+                  red_sum += (pixel.r as int * kernel_value);
+                  green_sum += (pixel.g as int * kernel_value);
+                  blue_sum += (pixel.b as int * kernel_value);
+                },
+                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", kx, ky, x, y)}
+              }
+
+            }  
+
+          }
+        }
+
+        red_sum = red_sum/kernel_sum;
+        green_sum = green_sum/kernel_sum;
+        blue_sum = blue_sum/kernel_sum;
+
+        if red_sum > 255 {red_sum = 255;}
+        if green_sum > 255 {green_sum = 255;}
+        if blue_sum > 255 {blue_sum = 255;}
+
+        if red_sum < 0 {red_sum = 0;}
+        if green_sum < 0 {green_sum = 0;}
+        if blue_sum < 0 {blue_sum = 0;}
+
+        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});
+        
+      }
+    }
+
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of brute force algorithm: {}", time);
+  }
+
+  fn edge(&mut self) {
+    // Brute force        Time: 
+    // let start = time::precise_time_ns();
+    // let kernel = [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]];
+    let kernel1 = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];    
+
+    let number_of_kernel_rows = 3;
+    let number_of_kernel_columns = 3;
+    let mut kernel_center_x: uint = 3/2;
+    let mut kernel_center_y: uint = 3/2;
+
+    for y in range(0, self.height){
+      for x in range(0, self.width){
+        let mut red_sum: int = 0;
+        let mut green_sum: int = 0;
+        let mut blue_sum: int = 0;
+
+        for kernel_row in range(0, number_of_kernel_rows){
+          let mm = number_of_kernel_rows - 1 - kernel_row;
+
+          for kernel_column in range(0, number_of_kernel_columns){
+           let nn = number_of_kernel_columns - 1 - kernel_column;
+
+            // Index of input signal
+            let xx: int = x as int - (kernel_row - kernel_center_y as int);
+            let yy: int = y as int - (kernel_column - kernel_center_x as int);
+            
+            if xx >= 0 && xx < (self.width as int) && yy >= 0 && yy < (self.height as int){
+              let kernel_value = kernel1[mm as uint][nn as uint];
+              match self.get_pixel(xx as uint, yy as uint) {
+                Some(pixel) => {
+                  red_sum += (pixel.r as int * kernel_value);
+                  green_sum += (pixel.g as int * kernel_value);
+                  blue_sum += (pixel.b as int * kernel_value);
+                },
+                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", xx, yy, x, y)}
+              }
+            }  
+
+          }
+        }
+      }
+    }
+
+        // println!("hi");
+        // if y+1 < self.height && y-1 > 0 && x+1 < self.width && x-1 > 0 {
+        //   red_sum = self.get_pixel(x-1,y-1).unwrap().r as int*kernel[0][0]
+        //     + self.get_pixel(x,y-1).unwrap().r as int*kernel[0][1]
+        //     + self.get_pixel(x+1,y-1).unwrap().r as int*kernel[0][2]
+        //     + self.get_pixel(x-1,y).unwrap().r as int*kernel[1][0]
+        //     + self.get_pixel(x,y).unwrap().r as int*kernel[1][1]
+        //     + self.get_pixel(x+1,y).unwrap().r as int*kernel[1][2]
+        //     + self.get_pixel(x-1,y+1).unwrap().r as int*kernel[2][0]
+        //     + self.get_pixel(x,y+1).unwrap().r as int*kernel[2][1]
+        //     + self.get_pixel(x+1,y+1).unwrap().r as int*kernel[2][2];
+
+        //   green_sum = self.get_pixel(x-1,y-1).unwrap().g as int*kernel[0][0]
+        //     + self.get_pixel(x,y-1).unwrap().g as int*kernel[0][1]
+        //     + self.get_pixel(x+1,y-1).unwrap().g as int*kernel[0][2]
+        //     + self.get_pixel(x-1,y).unwrap().g as int*kernel[1][0]
+        //     + self.get_pixel(x,y).unwrap().g as int*kernel[1][1]
+        //     + self.get_pixel(x+1,y).unwrap().g as int*kernel[1][2]
+        //     + self.get_pixel(x-1,y+1).unwrap().g as int*kernel[2][0]
+        //     + self.get_pixel(x,y+1).unwrap().g as int*kernel[2][1]
+        //     + self.get_pixel(x+1,y+1).unwrap().g as int*kernel[2][2];
+
+        //   blue_sum = self.get_pixel(x-1,y-1).unwrap().b as int*kernel[0][0]
+        //     + self.get_pixel(x,y-1).unwrap().b as int*kernel[0][1]
+        //     + self.get_pixel(x+1,y-1).unwrap().b as int*kernel[0][2]
+        //     + self.get_pixel(x-1,y).unwrap().b as int*kernel[1][0]
+        //     + self.get_pixel(x,y).unwrap().b as int*kernel[1][1]
+        //     + self.get_pixel(x+1,y).unwrap().b as int*kernel[1][2]
+        //     + self.get_pixel(x-1,y+1).unwrap().b as int*kernel[2][0]
+        //     + self.get_pixel(x,y+1).unwrap().b as int*kernel[2][1]
+        //     + self.get_pixel(x+1,y+1).unwrap().b as int*kernel[2][2];
+        // }
+
+
+    let kernel2 = [[1, 2, 1], [0, 0, 0], [-1, -2, -1]];    
+
+    for y in range(0, self.height){
+      for x in range(0, self.width){
+        let mut red_sum: int = 0;
+        let mut green_sum: int = 0;
+        let mut blue_sum: int = 0;
+
+        for kernel_row in range(0, number_of_kernel_rows){
+          let mm = number_of_kernel_rows - 1 - kernel_row;
+
+          for kernel_column in range(0, number_of_kernel_columns){
+           let nn = number_of_kernel_columns - 1 - kernel_column;
+
+            // Index of input signal
+            let xx: int = x as int - (kernel_row - kernel_center_y as int);
+            let yy: int = y as int - (kernel_column - kernel_center_x as int);
+            
+            if xx >= 0 && xx < (self.width as int) && yy >= 0 && yy < (self.height as int){
+              let kernel_value = kernel2[mm as uint][nn as uint];
+              match self.get_pixel(xx as uint, yy as uint) {
+                Some(pixel) => {
+                  red_sum += (pixel.r as int * kernel_value);
+                  green_sum += (pixel.g as int * kernel_value);
+                  blue_sum += (pixel.b as int * kernel_value);
+                },
+                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", xx, yy, x, y)}
+              }
+            }  
+
+          }
+        }
+
+
+        if red_sum > 255 {red_sum = 255;}
+        if green_sum > 255 {green_sum = 255;}
+        if blue_sum > 255 {blue_sum = 255;}
+
+        if red_sum < 0 {red_sum = 0;}
+        if green_sum < 0 {green_sum = 0;}
+        if blue_sum < 0 {blue_sum = 0;}
+
+        println!("Pixel color ({}, {}, {})", red_sum, green_sum, blue_sum);
+        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});    
+      }
+    }
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of brute force algorithm: {}", time);
+  }
+
+  fn emboss(&mut self) {
+    // Brute force        Time: 
+    // let start = time::precise_time_ns();
+  
+    let kernel = [[-1, -1, 0], [-1, 0, 1], [0, 1, 1]];
+    let bias = 128;
+    let mut kernel_center_x: uint = 3/2;
+    let mut kernel_center_y: uint = 3/2;
+
+    let mut initial_red = 0;
+    let mut initial_green = 0;
+    let mut initial_blue = 0;
+
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+
+        let mut red_sum = 0;
+        let mut green_sum = 0;
+        let mut blue_sum = 0;
+
+        for kernel_row in range(0, 3){
+          for kernel_column in range(0, 3){
+
+            let kx: int = kernel_row - (kernel_center_y - x) as int;
+            let ky: int = kernel_column - (kernel_center_x - y) as int;
+            
+            if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
+              let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
+              match self.get_pixel(kx as uint, ky as uint) {
+                Some(pixel) => {
+                  red_sum += (pixel.r as int * kernel_value);
+                  green_sum += (pixel.g as int * kernel_value);
+                  blue_sum += (pixel.b as int * kernel_value);
+                  // println!("r: {}, g: {}, b:{}", red_sum, green_sum, blue_sum);
+                  //println!("\tKernel pixel: ({},{},{}) at ({},{})", pixel.r, pixel.g, pixel.b, kx, ky);
+                },
+                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", kx, ky, x, y)}
+              }
+            }  
+
+          }
+        }
+
+        // red_sum = red_sum/kernel_sum;
+        // green_sum = green_sum/kernel_sum;
+        // blue_sum = blue_sum/kernel_sum;
+
+        red_sum += bias;
+        green_sum += bias;
+        blue_sum += bias;
+
+        if red_sum > 255 {red_sum = 255;}
+        if green_sum > 255 {green_sum = 255;}
+        if blue_sum > 255 {blue_sum = 255;}
+
+        if red_sum < 0 {red_sum = 0;}
+        if green_sum < 0 {green_sum = 0;}
+        if blue_sum < 0 {blue_sum = 0;}
+
+        // println!("Output pixel: ({},{},{}) at ({},{})", red_sum, green_sum, blue_sum, x, y);
+        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});
+        
+      }
+    }
+
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of brute force algorithm: {}", time);
+  }
+}
+impl Convolution for BMP {
+  // Works
+  fn blur(&mut self) {
+    // Brute force        Time: 264835676 ns
+    // let start = time::precise_time_ns();
+  
+    let kernel = [[1, 1, 1], [1, 1, 1], [1, 1, 1]];
+    let kernel_sum = 9;
+    let mut kernel_center_x: uint = 3/2;
+    let mut kernel_center_y: uint = 3/2;
+
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+
+        let mut red_sum = 0;
+        let mut green_sum = 0;
+        let mut blue_sum = 0;
+
+        for kernel_row in range(0, 3){
+          for kernel_column in range(0, 3){
+
+            let kx: int = kernel_row - (kernel_center_y - x) as int;
+            let ky: int = kernel_column - (kernel_center_x - y) as int;
+
+            if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
+
+              let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
+              match self.get_pixel(kx as uint, ky as uint) {
+                Some(pixel) => {
+                  red_sum += (pixel.r as int * kernel_value);
+                  green_sum += (pixel.g as int * kernel_value);
+                  blue_sum += (pixel.b as int * kernel_value);
+                },
+                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", kx, ky, x, y)}
+              }
+
+            }  
+
+          }
+        }
+
+        red_sum = red_sum/kernel_sum;
+        green_sum = green_sum/kernel_sum;
+        blue_sum = blue_sum/kernel_sum;
+
+        if red_sum > 255 {red_sum = 255;}
+        if green_sum > 255 {green_sum = 255;}
+        if blue_sum > 255 {blue_sum = 255;}
+
+        if red_sum < 0 {red_sum = 0;}
+        if green_sum < 0 {green_sum = 0;}
+        if blue_sum < 0 {blue_sum = 0;}
+
+        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});
+        
+      }
+    }
+
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of brute force algorithm: {}", time);
+  }
+
+  fn edge(&mut self) {
+    // Brute force        Time: 
+    // let start = time::precise_time_ns();
+    let kernel = [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]];
+    let mut kernel_center_x: uint = 3/2;
+    let mut kernel_center_y: uint = 3/2;
+
+    for y in range(0, self.height){
+      for x in range(0, self.width){
+        let mut red_sum: int = 0;
+        let mut green_sum: int = 0;
+        let mut blue_sum: int = 0;
+
+        for kernel_row in range(0, 3){
+          for kernel_column in range(0, 3){
+
+            let kx: int = kernel_row - (kernel_center_y - x) as int;
+            let ky: int = kernel_column - (kernel_center_x - y) as int;
+            
+            if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
+              let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
+              match self.get_pixel(kx as uint, ky as uint) {
+                Some(pixel) => {
+                  red_sum += (pixel.r as int * kernel_value);
+                  green_sum += (pixel.g as int * kernel_value);
+                  blue_sum += (pixel.b as int * kernel_value);
+                },
+                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", kx, ky, x, y)}
+              }
+            }  
+
+          }
+        }
+
+
+
+
+        if red_sum > 255 {red_sum = 255;}
+        if green_sum > 255 {green_sum = 255;}
+        if blue_sum > 255 {blue_sum = 255;}
+
+        if red_sum < 0 {red_sum = 0;}
+        if green_sum < 0 {green_sum = 0;}
+        if blue_sum < 0 {blue_sum = 0;}
+
+        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});    
+      }
+    }
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of brute force algorithm: {}", time);
+  }
+
+  fn emboss(&mut self) {
+    // Brute force        Time: 
+    // let start = time::precise_time_ns();
+  
+    let kernel = [[-1, -1, 0], [-1, 0, 1], [0, 1, 1]];
+    let bias = 128;
+    let mut kernel_center_x: uint = 3/2;
+    let mut kernel_center_y: uint = 3/2;
+
+    let mut initial_red = 0;
+    let mut initial_green = 0;
+    let mut initial_blue = 0;
+
+    for x in range(0, self.width){
+      for y in range(0, self.height){
+
+        let mut red_sum = 0;
+        let mut green_sum = 0;
+        let mut blue_sum = 0;
+
+        for kernel_row in range(0, 3){
+          for kernel_column in range(0, 3){
+
+            let kx: int = kernel_row - (kernel_center_y - x) as int;
+            let ky: int = kernel_column - (kernel_center_x - y) as int;
+            
+            if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
+              let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
+              match self.get_pixel(kx as uint, ky as uint) {
+                Some(pixel) => {
+                  red_sum += (pixel.r as int * kernel_value);
+                  green_sum += (pixel.g as int * kernel_value);
+                  blue_sum += (pixel.b as int * kernel_value);
+                  // println!("r: {}, g: {}, b:{}", red_sum, green_sum, blue_sum);
+                  //println!("\tKernel pixel: ({},{},{}) at ({},{})", pixel.r, pixel.g, pixel.b, kx, ky);
+                },
+                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", kx, ky, x, y)}
+              }
+            }  
+
+          }
+        }
+
+        // red_sum = red_sum/kernel_sum;
+        // green_sum = green_sum/kernel_sum;
+        // blue_sum = blue_sum/kernel_sum;
+
+        red_sum += bias;
+        green_sum += bias;
+        blue_sum += bias;
+
+        if red_sum > 255 {red_sum = 255;}
+        if green_sum > 255 {green_sum = 255;}
+        if blue_sum > 255 {blue_sum = 255;}
+
+        if red_sum < 0 {red_sum = 0;}
+        if green_sum < 0 {green_sum = 0;}
+        if blue_sum < 0 {blue_sum = 0;}
+
+        // println!("Output pixel: ({},{},{}) at ({},{})", red_sum, green_sum, blue_sum, x, y);
+        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});
+        
+      }
+    }
+
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of brute force algorithm: {}", time);
   }
 }
  
@@ -190,7 +1000,7 @@ impl PPM {
   }
  
   fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
-    let offset = (y * self.height * 3) + (x * 3);
+    let offset = (y * self.width * 3) + (x * 3);
     if offset < self.buffer_size() {
       Some(offset)
     }else{
@@ -198,19 +1008,19 @@ impl PPM {
     }
   }
  
-  pub fn get_pixel(&self, x: uint, y: uint) -> Option<Pixel> {
+  pub fn get_pixel(&self, x: uint, y: uint) -> Option<RGB_Pixel> {
     match self.get_offset(x, y) {
       Some(offset) => {
         let r1 = self.data[offset];
         let g1 = self.data[offset + 1];
         let b1 = self.data[offset + 2];
-        Some(Pixel{r: r1, g: g1, b: b1})
+        Some(RGB_Pixel{r: r1, g: g1, b: b1})
       },
       None => None
     }
   }
  
-  pub fn set_pixel(&mut self, x: uint, y: uint, color: Pixel) -> bool {
+  pub fn set_pixel(&mut self, x: uint, y: uint, color: RGB_Pixel) -> bool {
     match self.get_offset(x, y) {
       Some(offset) => {
         self.data[offset] = color.r;
@@ -237,12 +1047,14 @@ pub struct BMP {
   height: uint,
   data: ~[u8]
 }
-impl BMP {  // Only BMP 3.x is functional, BMP 4.x is not
+// Only BMP 3.x is functional, BMP 4.x is not
+impl BMP {
   pub fn new(width: uint, height: uint) -> BMP {
     let size = 3 * height * width;
     let mut buffer = from_elem(size, 0u8);
     BMP {width: width, height: height, data: buffer}
   }
+
   pub fn read_image(image_path_str: &str) -> BMP{
     let path = Path::new(image_path_str);
 
@@ -391,15 +1203,14 @@ impl BMP {  // Only BMP 3.x is functional, BMP 4.x is not
       Err(e)  => {println!("Error opening file: {}", e)}
     }
     BMP{width: image_width as uint, height: image_height as uint, data: image_data_bytes}
-
   }
 
   fn buffer_size(&self) -> uint {
-    3 * self.height * self.width
+    3 * self.width * self.height
   }
  
   fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
-    let offset = (y * self.height * 3) + (x * 3);
+    let offset = (y * self.width * 3) + (x * 3);
     if offset < self.buffer_size() {
       Some(offset)
     }else{
@@ -407,19 +1218,19 @@ impl BMP {  // Only BMP 3.x is functional, BMP 4.x is not
     }
   }
  
-  pub fn get_pixel(&self, x: uint, y: uint) -> Option<Pixel> {
+  pub fn get_pixel(&self, x: uint, y: uint) -> Option<RGB_Pixel> {
     match self.get_offset(x, y) {
       Some(offset) => {
         let r1 = self.data[offset];
         let g1 = self.data[offset + 1];
         let b1 = self.data[offset + 2];
-        Some(Pixel{r: r1, g: g1, b: b1})
+        Some(RGB_Pixel{r: r1, g: g1, b: b1})
       },
       None => None
     }
   }
  
-  pub fn set_pixel(&mut self, x: uint, y: uint, color: Pixel) -> bool {
+  pub fn set_pixel(&mut self, x: uint, y: uint, color: RGB_Pixel) -> bool {
     match self.get_offset(x, y) {
       Some(offset) => {
         self.data[offset] = color.r;
@@ -430,7 +1241,7 @@ impl BMP {  // Only BMP 3.x is functional, BMP 4.x is not
       None => false
     }
   }
-  pub fn write_file(&self, filename: &str) -> bool {
+  pub fn write_file(&mut self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
 
@@ -516,10 +1327,52 @@ impl BMP {  // Only BMP 3.x is functional, BMP 4.x is not
 
     // Color Palette (only if bits_per_pixel == 1, 4, or 8)
 
+    
+    // Write as BGR
+    // for mut i in range(0, self.data.len() - 2){
+    //   let temp = self.data[i];
+    //   self.data[i] = self.data[i+2];
+    //   self.data[i+2] = temp;
+    //   i += 3;
+    // }
     file.write(self.data);
     true
   }
 }
+
+// pub struct GIF {
+//   width: uint,
+//   height: uint,
+//   data: ~[u8]
+// }
+// impl GIF {
+//   // "GIF87a" (6 bytes)
+//   // Screen Descriptor (7 bytes, little endian)
+//     // Width (2), Height (2), Depth (2), ColorMap (1)
+
+//   fn gif_eval(image_path_str: &str){
+//     let path = Path::new(image_path_str);
+
+//     let mut signature: ~[u8] = [0 as u8 ..6];
+
+//     match File::open(&path) {
+//       Some(image) => {
+//         // Check signature
+//         match image.read(signature){
+//           Some(num_of_bytes) => {
+//             if num_of_bytes == 6 && eq(str::from_utf8(signature), "GIF87a") {
+//               println!("Valid GIF");
+//             }
+//           }
+//         }
+//       },
+//       None  => {println!("Unable to open image as GIF")}
+//     }
+//   }
+// }
+
+
+
 
 fn main() {
   let args = os::args();
@@ -528,17 +1381,79 @@ fn main() {
   }
   else {
     println!("Path to image: {}", args[1]);
-    let mut bmp_image = BMP::read_image(args[1]);
-    bmp_image.inverse();
-    bmp_image.write_file("output.bmp");
 
-    // let mut ppm_image = PPM::read_image(args[1]);
-    // ppm_image.inverse();
-    // ppm_image.write_file("output.ppm");
+
+    // Point Processor
+    // let mut bmp1 = BMP::read_image(args[1]);
+    // bmp1.negative();
+    // bmp1.write_file("output1.bmp");
+
+    // let mut bmp2 = BMP::read_image(args[1]);
+    // bmp2.brighten(100);
+    // bmp2.write_file("output2.bmp");
+
+    // let mut bmp3 = BMP::read_image(args[1]);
+    // bmp3.contrast(12.5);
+    // bmp3.write_file("output3.bmp");
+
+    // let mut bmp4 = BMP::read_image(args[1]);
+    // bmp4.saturate(12.5);
+    // bmp4.write_file("output4.bmp");
+
+    // let mut bmp5 = BMP::read_image(args[1]);
+    // bmp5.grayscale();
+    // bmp5.write_file("output5.bmp");    
+
+    // Convolution Filter
+    // let mut bmp6 = BMP::read_image(args[1]);
+    // bmp6.blur();
+    // bmp6.blur();
+    // bmp6.blur();
+    // bmp6.write_file("output6.bmp");
+
+    let mut ppm6 = PPM::read_image(args[1]);
+    ppm6.blur();
+    ppm6.write_file("output6.ppm");
+
+    let mut ppm7 = PPM::read_image(args[1]);
+    ppm7.edge();
+    ppm7.write_file("output7.ppm");
+
+    let mut ppm8 = PPM::read_image(args[1]);
+    ppm8.emboss();
+    ppm8.write_file("output8.ppm");
+
+
 
   }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
