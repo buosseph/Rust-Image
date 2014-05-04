@@ -1,10 +1,12 @@
 #include <jpeglib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 //extern JSAMPLE * image_buffer;
 int main() {
 
 	/*********** Decompressing and reading **************/
+	
 	struct jpeg_decompress_struct cinfo1;
 	struct jpeg_error_mgr jerr1;
 	cinfo1.err = jpeg_std_error(&jerr1);
@@ -18,111 +20,79 @@ int main() {
 	jpeg_stdio_src(&cinfo1, infile);
 
 	jpeg_read_header(&cinfo1, TRUE);
-
 	jpeg_start_decompress(&cinfo1);
 
 	int row_stride1;
 	row_stride1 = cinfo1.output_width * cinfo1.output_components;
-	
-	unsigned char ** buffer = (*cinfo1.mem->alloc_sarray)
-		((j_common_ptr) &cinfo1, JPOOL_IMAGE, row_stride1, 1);
-
 
 	printf("Image width: %i\n", cinfo1.output_width);
 	printf("Image height: %i\n", cinfo1.output_height);
-	printf("Image color components: %i\n", cinfo1.out_color_components);	// 3 = RGB, 1 = Grayscale
-	printf("Image components: %i\n", cinfo1.output_components);
-	//printf("Image height: %d\n", cinfo1.colormap);
-	//printf("Image height: %d\n", cinfo1.actual_number_of_colors);	
+	printf("Image color components per pixel: %i\n", cinfo1.out_color_components);	// 3 = RGB, 1 = Grayscale
+	printf("Color space: %d\n", cinfo1.jpeg_color_space);
 
 	int width = cinfo1.output_width;
 	int height = cinfo1.output_height;
 	int components = cinfo1.out_color_components; // 3 = RGB, 1 = Grayscale
 
 
+	int bitmap_size = cinfo1.output_width * cinfo1.output_height * cinfo1.out_color_components;
+	unsigned char * image_buffer = (unsigned char *)malloc(bitmap_size);
+	unsigned char * row_pointer1[1];
+	row_pointer1[0] = (unsigned char *)malloc(cinfo1.output_width * cinfo1.out_color_components);
 
-	//unsigned char* buffer = new unsigned char *[cinfo.output_width * cinfo.output_height * 3];
-
-	// Figure out how to acces data
-	int numberOfLines = 0;
+	unsigned int location = 0;
 	while (cinfo1.output_scanline < cinfo1.output_height) {
-		numberOfLines = jpeg_read_scanlines(&cinfo1, buffer, 1);
-		//put_scanline_someplace(buffer[0], row_stride1);
-		//buffer[numberOfLines*row_stride1];
+		jpeg_read_scanlines(&cinfo1, row_pointer1, 1);
+		for (int i=0; i<cinfo1.image_width * cinfo1.out_color_components; i++) {
+			image_buffer[location++] = row_pointer1[0][i];
+		}
+
 	}
-
-	// unsigned char* line;
-	// int numberOfSamples;
-	// while (cinfo.output_scanline < cinfo.output_height) {
-	// 	numberOfSamples = jpeg_read_scanline(&cinfo, (JSAMPARRAY) );
-	// }
-
 	jpeg_finish_decompress(&cinfo1);
 	jpeg_destroy_decompress(&cinfo1);
+	//free(row_pointer1[0]);
 	fclose(infile);
-
-	// Move data from unsiged char ** to unsigned char *
-	//printf("(%i, %i, %i)", buffer[0][0], buffer[0][1], buffer[0][2]);
-
-
-
-
-
 
 
 
 	/*********** Compressing and writing **************/
-	
-	// Works, but colorspace is incorrect? Everything is blue
-	//unsigned char image_buffer[] =  {255,0,0, 0,255,0, 0,0,255, 0,0,0};
-
-	struct jpeg_compress_struct cinfo;
-	struct jpeg_error_mgr jerr;
-	cinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_compress(&cinfo);
+	struct jpeg_compress_struct cinfo2;
+	struct jpeg_error_mgr jerr2;
+	cinfo2.err = jpeg_std_error(&jerr2);
+	jpeg_create_compress(&cinfo2);
 
 	FILE * outfile;
 	if ((outfile = fopen("output.jpeg", "wb")) == NULL) {
 		fprintf(stderr, "Can't open %s\n","output.jpeg" );
 		return 0;
 	}
-	jpeg_stdio_dest(&cinfo, outfile);
+	jpeg_stdio_dest(&cinfo2, outfile);
 
-	// Require info
-	// int width = 2;
-	// int height = 2;
-	// int components = 3; // 3 = RGB, 1 = Grayscale
-	//JCS_RGB or JCS_GRAYSCALE
-	cinfo.image_width = width;
-	cinfo.image_height = height;
-	cinfo.input_components = components;
-	cinfo.in_color_space = JCS_RGB;
-	jpeg_set_defaults(&cinfo);
+	// Require info before writing
+	cinfo2.image_width = width;
+	cinfo2.image_height = height;
+	cinfo2.input_components = components;	// 3 = RGB, 1 = Grayscale
+	cinfo2.in_color_space = JCS_RGB;		//JCS_RGB or JCS_GRAYSCALE
+	jpeg_set_defaults(&cinfo2);
 
 	// Optional parameter settings 
-	// int quality = 15 // 1-100 or 0-100?
-	// jpeg_set_quality(&cinfo, quality, TRUE);
+	// int quality = 100; // 1-100
+	// jpeg_set_quality(&cinfo2, quality, TRUE);
 
-	jpeg_start_compress(&cinfo, TRUE);
+	jpeg_start_compress(&cinfo2, TRUE);
 
-
-
-	JSAMPROW row_pointer[1];
+	unsigned char * row_pointer[1];
 	int row_stride;
 	row_stride = width * 3; // JSAMPLEs per row in image (1 if grayscale?)
 	
-	// Need to figure out how to pass data to writer!
-	while(cinfo.next_scanline < cinfo.image_height) {
-		row_pointer[0] = & buffer[0][cinfo.next_scanline * row_stride];
-		jpeg_write_scanlines(&cinfo, row_pointer, 1);
+	while(cinfo2.next_scanline < cinfo2.image_height) {
+		row_pointer[0] = & image_buffer[cinfo2.next_scanline * row_stride];
+		jpeg_write_scanlines(&cinfo2, row_pointer, 1);
 	}
-
-	jpeg_finish_compress(&cinfo);
+	jpeg_finish_compress(&cinfo2);
 	fclose(outfile);
 
-	jpeg_destroy_compress(&cinfo);
-	
-	
+	jpeg_destroy_compress(&cinfo2);
 
 
 	return 0;
