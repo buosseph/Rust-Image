@@ -1,5 +1,6 @@
 extern crate time;
 extern crate sync;
+extern crate libc;
 
 use std::slice::from_elem;
 use std::slice;
@@ -9,13 +10,42 @@ use std::os;
 use std::str;
 use std::uint;
 
+/*
+#[link(name = "jpeg")]
+#[link_args = "-ljpeg"]
+extern {
+  fn jpeg_std_error();            //????
+
+  fn jpeg_create_decompress();    //void
+  fn jpeg_stdio_src();            //void
+  fn jpeg_read_header();          //int
+  fn jpeg_start_decompress();     //bool
+  fn jpeg_read_scanlines();       //JDIMENSION
+  fn jpeg_finish_decompress();    //bool
+  fn jpeg_destroy_decompress();   //void
+
+  fn jpeg_create_compress();      //void
+  fn jpeg_stdio_dest();           //void
+  fn jpeg_set_defaults();         //void
+  fn jpeg_start_compress();       //void
+  fn jpeg_write_scanlines();      //JDIMENSION
+  fn jpeg_finish_compress();      //void
+  fn jpeg_destroy_compress();     //void
+}*/
+
+
+
+
+
 pub struct RGB_Pixel {
   r: u8,
   g: u8,
   b: u8,
 }
-pub enum ColorType {
-  RGB, GRAYSCALE
+pub enum ColorType {    // Not yet implemented
+  GRAYSCALE = 1,
+  RGB = 24,
+  RGBA = 32,
 }
 
 pub struct Image {
@@ -208,30 +238,37 @@ impl Image {  // Not complete, and may never be
   }
 }
 
-// BMP 3.x Image format (4.x and 5.x not functional)
-impl Image {  // Need to fix pixel ordering difference, screws up format translation and convolution
-  // NOTE: BMP pixels stored as BGR, not RGB
-  // NOTE: BMP scanlines stored left to right, BOTTOM UP --> store pixels starting from bottom row when writing
+// BMP 3.x & 4.x Image formats
+impl Image {
+  /* NOTES:
+   * BMP pixels stored as BGR, not RGB
+   * If height is positive, scanlines stored BOTTOM UP --> store pixels starting from bottom row when writing
+   * If height is negative, scanliens stored TOP DOWN  --> No flip required to match Image struct pixel array orientation
+   * BMP 3.x has padding ?
+   */
 
   // Good example for furture development of image format: http://www.kalytta.com/bitmap.h
+  // See http://msdn.microsoft.com/en-us/library/dd183381(v=vs.85).aspx for more information on meta data in various headers
+
+  // Check compression then color type
   pub fn read_bmp(image_path_str: &str) -> Image{
     let path = Path::new(image_path_str);
 
-    let mut file_type: ~[u8] = ~[0 as u8, 0 as u8];
-    let mut file_size: u32 = 0 as u32;
+    let mut signature: ~[u8] = ~[0 as u8, 0 as u8];
+    let mut file_size: u32 = 0 as u32;      
     let mut offset: u32 = 0 as u32;
-    let mut header_size: u32 = 0 as u32;
+    let mut header_size: u32 = 0 as u32;      // 40 = BMP 3.x, 108 = BMP 4.x, 124 = BMP 5.x
     let mut image_width: u32 = 0 as u32;
     let mut image_height: u32 = 0 as u32;
     let mut planes: u16 = 0 as u16;
-    let mut bits_per_pixel: u16 = 0 as u16;  
+    let mut bits_per_pixel: u16 = 0 as u16;   // 1 = Grayscale, 24 = RGB, 32 = RGBA
 
     let mut compression_type: u32 = 0 as u32;
-    let mut size_of_bitmap: u32 = 0 as u32; 
-    let mut horizontal_resolution: u32 = 0 as u32;
-    let mut vertical_resolution: u32 = 0 as u32;
-    let mut colors_used: u32 = 0 as u32;
-    let mut colors_important: u32 = 0 as u32;
+    let mut size_of_bitmap: u32 = 0 as u32;   
+    // let mut horizontal_resolution: u32 = 0 as u32;
+    // let mut vertical_resolution: u32 = 0 as u32;
+    // let mut colors_used: u32 = 0 as u32;
+    // let mut colors_important: u32 = 0 as u32;
 
     let mut image_data_bytes: ~[u8] = ~[];
     let mut buffer: ~[u8] = ~[];
@@ -239,28 +276,28 @@ impl Image {  // Need to fix pixel ordering difference, screws up format transla
 
     match File::open(&path) {
       Ok(mut image) => {
-        // Check file type
-        match image.read(file_type) {
+        match image.read(signature) {
           Ok(num_of_bytes) =>  {
-            match str::from_utf8_owned(file_type) {
-              Some(read_file_type)  => {
-                if !str::eq(&read_file_type, &~"BM") {
-                  fail!("Input image was not a valid BMP 3.x image");
+            match str::from_utf8_owned(signature) {
+              Some(read_signature)  => {
+                if !str::eq(&read_signature, &~"BM") {
+                  fail!("Input image is not a valid BMP image");
                 }
               },
-              None        => {fail!("Error wrong reading the file type")}
+              None => {fail!("Error wrong reading file signature")}
             }
           },
-          Err(e) => {println!("Error reading BMP file header: {}", e)}
+          Err(e) => {println!("Error reading BMP file signature: {}", e)}
         }
 
-        // Read remaining BMP file header
+        // Total file size
         match image.read_le_u32() {
           Ok(read_file_size) => {
             file_size = read_file_size;
           },
           Err(e)  => {println!("Error reading the filesize: {}", e)}
         }
+        // Reserved & pixel data offset
         match image.read_le_u16() {
           Ok(read_reserved1) => {
             match image.read_le_u16() {
@@ -278,43 +315,49 @@ impl Image {  // Need to fix pixel ordering difference, screws up format transla
           Err(e)  => {println!("Error reading the first reserved word: {}", e)}
         }
 
-        // Read bitmap header
+        // Bitmap header size
         match image.read_le_u32() {
           Ok(read_header_size) => {
             header_size = read_header_size;
           },
           Err(e) => (println!("Error reading bitmap header size: {}", e))
         }
+        // Image width
         match image.read_le_u32() {
           Ok(read_image_width) => {
             image_width = read_image_width;
           },
           Err(e) => (println!("Error reading image width: {}", e))
         }
+        // Image height
         match image.read_le_u32() {
           Ok(read_image_height) => {
             image_height = read_image_height;
           },
           Err(e) => (println!("Error reading image height: {}", e))
         }
+        // Number of planes
         match image.read_le_u16() {
           Ok(read_planes) => {
             planes = read_planes;
           },
           Err(e) => (println!("Error reading bitmap planes: {}", e))
         }
+        // Number of components
         match image.read_le_u16() {
           Ok(read_bits_per_pixel) => {
             bits_per_pixel = read_bits_per_pixel;
           },
           Err(e) => (println!("Error reading bitmap planes: {}", e))
         }
+        // Compression (type)
         match image.read_le_u32() {
           Ok(read_compression_type) => {
             compression_type = read_compression_type;
           },
           Err(e) => (println!("Error reading image height: {}", e))
         }
+        // Bitmap size
         match image.read_le_u32() {
           Ok(read_bitmap_size) => {
             // The end of scanline bytes are included (thus + 2*height)
@@ -323,6 +366,7 @@ impl Image {  // Need to fix pixel ordering difference, screws up format transla
           },
           Err(e) => (println!("Error reading image height: {}", e))
         }
+        /*
         match image.read_le_u32() {
           Ok(read_horizontal_resolution) => {
             horizontal_resolution = read_horizontal_resolution;
@@ -347,66 +391,106 @@ impl Image {  // Need to fix pixel ordering difference, screws up format transla
           },
           Err(e) => (println!("Error reading image height: {}", e))
         }
+        */
 
-        // Read remaining data
-        // Should read based on image_size in file header
-        // let image_size = (file_size as uint) - 14 - (header_size as uint);
-        // println!("Image size: {}", image_size);
 
-        // Would want a more appropriate way of filling image_data_bytes
-        // NOTE: BMP is not encoded as RGB from top to bottom, thus need to reorganize pixel data before returning Image
-        // loop {
-        //   match image.read_byte() {
-        //     Ok(byte) => {image_data_bytes.push(byte)},
-        //     Err(e)   => {break;}
-        //   }
-        // }
+        let mut remainder = offset as int - 14 - 24; // - fileheader size - read bytes
+        // BMP 3.x
+        if header_size as int == 40 {
+          println!("This is bmp 3");
+          for i in range(0, remainder) {
+            match image.read_byte() {
+              Ok(byte)  => {continue},
+              Err(e)    => {fail!("Error reading BMP 3.x header: {}", e)}
+            }
+          }
 
-        //let mut pixel_buffer: ~[u8] = ~[0, 0, 0];
-        for y in range(0, image_height) {
-          for x in range(0, image_width) {
-            match image.read_exact(3) {
-              Ok(mut pixel_data) => {
-                // Determine where to put byte here
+          for y in range(0, image_height) {
+            for x in range(0, image_width) {
+              match image.read_exact(3) {
+                Ok(mut pixel_data) => {
+                  // Determine where to put byte here
 
-                match pixel_data.pop() {
-                  Some(red) => {buffer.push(red)},
-                  None  => {fail!("Error getting red component for BMP pixel")}
+                  match pixel_data.pop() {
+                    Some(red) => {buffer.push(red)},
+                    None  => {fail!("Error getting red component for BMP pixel")}
+                  }
+                  match pixel_data.pop() {
+                    Some(green) => {buffer.push(green)},
+                    None  => {fail!("Error getting green component for BMP pixel")}
+                  }
+                  match pixel_data.pop() {
+                    Some(blue) => {buffer.push(blue)},
+                    None  => {fail!("Error getting blue component for BMP pixel")}
+                  }
+
+                },
+                Err(e)    => {fail!("Error reading BMP pixel")}
+              }
+            }
+
+            // Should read two bytes as 0
+            match image.read_le_u16() {
+              Ok(end_of_scanline) => {
+                if end_of_scanline as uint == 0 {
+                  continue;
                 }
-                match pixel_data.pop() {
-                  Some(green) => {buffer.push(green)},
-                  None  => {fail!("Error getting green component for BMP pixel")}
+                else {
+                  break;
+                  fail!("Error reading end of scanline")
                 }
-                match pixel_data.pop() {
-                  Some(blue) => {buffer.push(blue)},
-                  None  => {fail!("Error getting blue component for BMP pixel")}
-                }
-
               },
-              Err(e)    => {fail!("Error reading BMP pixel")}
+              Err(e) => {
+                fail!("Error chekcing end of scanline")
+              }
             }
           }
-          // Should read two bytes as 0
-          match image.read_le_u16() {
-            Ok(end_of_scanline) => {
-              if end_of_scanline as uint == 0 {
-                continue;
-              }
-              else {
-                break;
-                fail!("Error reading end of scanline")
-              }
-            },
-            Err(e) => {
-              fail!("Error chekcing end of scanline")
+        }
+        // BMP 4.x & 5.x
+        else {
+          println!("Image width: {}\nImage height: {}", image_width, image_height);
+          // Skip unneeded header data
+          for i in range(0, remainder) {
+            match image.read_byte() {
+              Ok(byte)  => {continue},
+              Err(e)    => {fail!("Error reading BMP header: {}", e)}
             }
           }
+          if compression_type as int == 0 {
+            if bits_per_pixel as int == 24 {
+              for y in range(0, image_height) {
+                for x in range(0, image_width) {
+                  match image.read_exact(3) {
+                    Ok(mut pixel_data) => {
+                      match pixel_data.pop() {
+                        Some(red) => {buffer.push(red)},
+                        None  => {fail!("Error getting red component for BMP pixel")}
+                      }
+                      match pixel_data.pop() {
+                        Some(green) => {buffer.push(green)},
+                        None  => {fail!("Error getting green component for BMP pixel")}
+                      }
+                      match pixel_data.pop() {
+                        Some(blue) => {buffer.push(blue)},
+                        None  => {fail!("Error getting blue component for BMP pixel")}
+                      }
+                    },
+                    Err(e)    => {fail!("Error reading BMP pixel")}
+                  }
+                }                
+              }
+            }
+            else if bits_per_pixel as int == 32 {
+              fail!("Can't read 32-bit images yet");
+            }
+          }                   
         }
 
       },
       Err(e)  => {println!("Error opening file: {}", e)}
     }
 
+    // If height > 0 ...
     // Without this scanlines are flipped in image data
     for i in range(0, image_height){
       let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB
@@ -419,116 +503,180 @@ impl Image {  // Need to fix pixel ordering difference, screws up format transla
     Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}
   }
 
+  // Check color type then compression
   pub fn write_bmp(&mut self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
+    let version = 4; // For testing purposes
 
-    // File Header, 14 bytes in size
-    let filetype = "BM";
-    /* Total filesize in bytes (File header guaranteed 14 bytes)
-     *    Bitmap 3.x => 54 + 3 * width * height bytes
-     *    Bitmap 4.x => 108 + 3 * width * height bytes
-     */
-    let filesize: u32 = 0 as u32; 
-    let reserved1: u16 = 0 as u16;
-    let reserved2: u16 = 0 as u16;
-    let bitmap_offset: u32 = 54 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 108
-    file.write(filetype.as_bytes());
-    file.write_le_u32(filesize);
-    file.write_le_u16(reserved1);
-    file.write_le_u16(reserved2);
-    file.write_le_u32(bitmap_offset);
+    let signature = "BM";
+    // Save as BMP 4.x
+    if version == 4 {
+      match self.color_type {
+        // No padding needed for RGBA
+        RGB => {
+          let filesize: u32 = ((self.width * self.height * 3) + 108 + 14) as u32; 
+          let reserved1: u16 = 0 as u16;
+          let reserved2: u16 = 0 as u16;
+          let bitmap_offset: u32 = 122 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 122
+          file.write(signature.as_bytes());
+          file.write_le_u32(filesize);
+          file.write_le_u16(reserved1);
+          file.write_le_u16(reserved2);
+          file.write_le_u32(bitmap_offset);
 
-    // Bitmap 4.x Header, 108 bytes in size if color space info included
-    // Bitmap 3.x Header, 40 bytes in size (no colorspace info)
-    let header_size: u32 = 40 as u32;  // Size in bytes
-    let image_width: u32 = self.width as u32;    // In pixels
-    let image_height: u32 = self.height as u32;   // In pixels
-    let planes: u16 = 1 as u16;         // Number of color planes, in BMP this is always 1
-    let bits_per_pixel: u16 = 24 as u16;  // Number of bits per pixel
-    file.write_le_u32(header_size);
-    file.write_le_u32(image_width);
-    file.write_le_u32(image_height);
-    file.write_le_u16(planes);
-    file.write_le_u16(bits_per_pixel);
+          let header_size: u32 = 108 as u32;  // Size in bytes
+          let image_width: u32 = self.width as u32;    // In pixels
+          let image_height: u32 = self.height as u32;   // In pixels
+          let planes: u16 = 1 as u16;         // Number of color planes, in BMP this is always 1
+          let bits_per_pixel: u16 = 24 as u16;  // Number of bits per pixel
+          file.write_le_u32(header_size);
+          file.write_le_u32(image_width);
+          file.write_le_u32(image_height);
+          file.write_le_u16(planes);
+          file.write_le_u16(bits_per_pixel);
 
-    let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
-    let size_of_bitmap: u32 = 0 as u32; // Size in bytes, 0 when uncompressed
-    let horizontal_resolution: u32 = 2835 as u32;  // In pixels per meter
-    let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
-    let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
-    let colors_important: u32 = 0 as u32;   // 0 if all colors are important
-    file.write_le_u32(compression_type);
-    file.write_le_u32(size_of_bitmap);
-    file.write_le_u32(horizontal_resolution);
-    file.write_le_u32(vertical_resolution);
-    file.write_le_u32(colors_used);
-    file.write_le_u32(colors_important);
+          let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
+          let size_of_bitmap: u32 = (self.width * self.height * 3) as u32; // Size in bytes, 0 when uncompressed = 0
+          let horizontal_resolution: u32 = 2835 as u32;  // In pixels per meter
+          let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
+          let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
+          let colors_important: u32 = 0 as u32;   // 0 if all colors are important
+          file.write_le_u32(compression_type);
+          file.write_le_u32(size_of_bitmap);
+          file.write_le_u32(horizontal_resolution);
+          file.write_le_u32(vertical_resolution);
+          file.write_le_u32(colors_used);
+          file.write_le_u32(colors_important);        
 
-    // Color space info
-    /*
-    let red_mask: u32 = 0 as u32;
-    let green_mask: u32 = 0 as u32;
-    let blue_mask: u32 = 0 as u32;
-    let alpha_mask: u32 = 0 as u32;
-    let cs_type: u32 = 0 as u32;
-    let endpoint_red_x: u32 = 0 as u32;
-    let endpoint_red_y: u32 = 0 as u32;
-    let endpoint_red_z: u32 = 0 as u32;
-    let endpoint_green_x: u32 = 0 as u32;
-    let endpoint_green_y: u32 = 0 as u32;
-    let endpoint_green_z: u32 = 0 as u32;
-    let endpoint_blue_x: u32 = 0 as u32;
-    let endpoint_blue_y: u32 = 0 as u32;
-    let endpoint_blue_z: u32 = 0 as u32;
-    let gamma_red: u32 = 0 as u32;
-    let gamma_green: u32 = 0 as u32;
-    let gamma_blue: u32 = 0 as u32;
-    file.write_le_u32(red_mask);
-    file.write_le_u32(green_mask);
-    file.write_le_u32(blue_mask);
-    file.write_le_u32(alpha_mask);
-    file.write_le_u32(cs_type);
-    file.write_le_u32(endpoint_red_x);
-    file.write_le_u32(endpoint_red_y);
-    file.write_le_u32(endpoint_red_z);
-    file.write_le_u32(endpoint_green_x);
-    file.write_le_u32(endpoint_green_y);
-    file.write_le_u32(endpoint_green_z);
-    file.write_le_u32(endpoint_blue_x);
-    file.write_le_u32(endpoint_blue_y);
-    file.write_le_u32(endpoint_blue_z);
-    file.write_le_u32(gamma_red);
-    file.write_le_u32(gamma_green);
-    file.write_le_u32(gamma_blue);
-    */
+          let red_mask: u32 = 0 as u32; //BGRs when not compressed? This is unclear
+          let green_mask: u32 = 0 as u32;
+          let blue_mask: u32 = 0 as u32;
+          let alpha_mask: u32 = 0 as u32;
+          let cs_type: u32 = 0 as u32;
+          let endpoint_red_x: u32 = 0 as u32;
+          let endpoint_red_y: u32 = 0 as u32;
+          let endpoint_red_z: u32 = 0 as u32;
+          let endpoint_green_x: u32 = 0 as u32;
+          let endpoint_green_y: u32 = 0 as u32;
+          let endpoint_green_z: u32 = 0 as u32;
+          let endpoint_blue_x: u32 = 0 as u32;
+          let endpoint_blue_y: u32 = 0 as u32;
+          let endpoint_blue_z: u32 = 0 as u32;
+          let gamma_red: u32 = 0 as u32;
+          let gamma_green: u32 = 0 as u32;
+          let gamma_blue: u32 = 0 as u32;
+          file.write_le_u32(red_mask);
+          file.write_le_u32(green_mask);
+          file.write_le_u32(blue_mask);
+          file.write_le_u32(alpha_mask);
+          file.write_le_u32(cs_type);
+          file.write_le_u32(endpoint_red_x);
+          file.write_le_u32(endpoint_red_y);
+          file.write_le_u32(endpoint_red_z);
+          file.write_le_u32(endpoint_green_x);
+          file.write_le_u32(endpoint_green_y);
+          file.write_le_u32(endpoint_green_z);
+          file.write_le_u32(endpoint_blue_x);
+          file.write_le_u32(endpoint_blue_y);
+          file.write_le_u32(endpoint_blue_z);
+          file.write_le_u32(gamma_red);
+          file.write_le_u32(gamma_green);
+          file.write_le_u32(gamma_blue);
 
-    // Color Palette (only if bits_per_pixel == 1, 4, or 8)
+          for y in range(0, self.height) {
+            let bmp_y = self.height - 1 - y;
+            for x in range(0, self.width) {
+              match self.get_pixel(x,bmp_y) {
+                Some(pixel) => {
+                  let blue = pixel.b;
+                  let green = pixel.g;
+                  let red = pixel.r;
 
-
-    // After writing, 090903 should occur at byte 63 in testimage.bmp
-    // Read every scanline from left to right, bottom up; but read each pixel value as BGR
-    for y in range(0, self.height) {
-      let bmp_y = self.height - 1 - y;
-      for x in range(0, self.width) {
-        match self.get_pixel(x,bmp_y) {
-          Some(pixel) => {
-            let blue = pixel.b;
-            let green = pixel.g;
-            let red = pixel.r;
-
-            file.write_u8(blue);
-            file.write_u8(green);
-            file.write_u8(red);
-          },
-          None => {fail!("Error writing image as BMP file")}
-        }
+                  file.write_u8(blue);
+                  file.write_u8(green);
+                  file.write_u8(red);
+                },
+                None => {fail!("Error writing image as BMP file")}
+              }
+            }
+            // Padding required for RGB
+            file.write_u8(0);
+            file.write_u8(0);
+          }
+          true      
+        },
+        _ => {false},
       }
-      // Needs 0000 after every scanline, should occur at 1596 in testimage.bmp
-      file.write_u8(0);
-      file.write_u8(0);
     }
-    true
+    // Save as BMP 3.x
+    else if version == 3 {
+      /* Total filesize in bytes (File header guaranteed 14 bytes)
+       *    Bitmap 3.x => 54 + 3 * width * height bytes
+       */
+      let filesize: u32 = ((self.width * self.height * 3) + 40 + 14) as u32; 
+      let reserved1: u16 = 0 as u16;
+      let reserved2: u16 = 0 as u16;
+      let bitmap_offset: u32 = 54 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 108
+      file.write(signature.as_bytes());
+      file.write_le_u32(filesize);
+      file.write_le_u16(reserved1);
+      file.write_le_u16(reserved2);
+      file.write_le_u32(bitmap_offset);
+
+      // Bitmap 3.x Header, 40 bytes in size (no colorspace info)
+      let header_size: u32 = 40 as u32;  // Size in bytes
+      let image_width: u32 = self.width as u32;    // In pixels
+      let image_height: u32 = self.height as u32;   // In pixels
+      let planes: u16 = 1 as u16;         // Always 1
+      let bits_per_pixel: u16 = 24 as u16;  // Number of bits per pixel
+      file.write_le_u32(header_size);
+      file.write_le_u32(image_width);
+      file.write_le_u32(image_height);
+      file.write_le_u16(planes);
+      file.write_le_u16(bits_per_pixel);
+
+      let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
+      let size_of_bitmap: u32 = 0 as u32; // Size in bytes, 0 when uncompressed
+      let horizontal_resolution: u32 = 2835 as u32;  // In pixels per meter
+      let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
+      let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
+      let colors_important: u32 = 0 as u32;   // 0 if all colors are important
+      file.write_le_u32(compression_type);
+      file.write_le_u32(size_of_bitmap);
+      file.write_le_u32(horizontal_resolution);
+      file.write_le_u32(vertical_resolution);
+      file.write_le_u32(colors_used);
+      file.write_le_u32(colors_important);
+
+      // Color Palette (only if bits_per_pixel == 1, 4, or 8)
+
+      // Read every scanline from left to right, bottom up; but read each pixel value as BGR
+      for y in range(0, self.height) {
+        let bmp_y = self.height - 1 - y;
+        for x in range(0, self.width) {
+          match self.get_pixel(x,bmp_y) {
+            Some(pixel) => {
+              let blue = pixel.b;
+              let green = pixel.g;
+              let red = pixel.r;
+
+              file.write_u8(blue);
+              file.write_u8(green);
+              file.write_u8(red);
+            },
+            None => {fail!("Error writing image as BMP file")}
+          }
+        }
+        // Padding required for RGB
+        file.write_u8(0);
+        file.write_u8(0);
+      }
+      true
+    }
+    else {
+      false
+    }
   }
 }
 
@@ -583,8 +731,8 @@ impl PointProcessor for Image {
 
     // Brute force        Time: 33111543 ns
     // let start = time::precise_time_ns();
-    for x in range(0, self.width){
-      for y in range(0, self.height){
+    for y in range(0, self.height){
+      for x in range(0, self.width){
         match self.get_pixel(x,y){
           Some(pixel) => {
             let mut red = pixel.r as int + bias;
@@ -612,8 +760,8 @@ impl PointProcessor for Image {
   fn contrast(&mut self, gain: f32) {
     let mut total_luminance: f32 = 0.;
 
-    for x in range(0, self.width){
-      for y in range(0, self.height){
+    for y in range(0, self.height){
+      for x in range(0, self.width){
         match self.get_pixel(x,y){
           Some(pixel) => {
             let mut red     = pixel.r as f32;
@@ -629,8 +777,8 @@ impl PointProcessor for Image {
 
     let mean_luminance: f32 = total_luminance/((self.width*self.height) as f32);
 
-    for x in range(0, self.width){
-      for y in range(0, self.height){
+    for y in range(0, self.height){
+      for x in range(0, self.width){
         match self.get_pixel(x,y){
           Some(pixel) => {
             let mut red     = pixel.r as int;
@@ -661,10 +809,9 @@ impl PointProcessor for Image {
       }
     }
   }
-  // Aliasing introduced
   fn saturate(&mut self, gain: f32) {
-    for x in range(0, self.width){
-      for y in range(0, self.height){
+    for y in range(0, self.height){
+      for x in range(0, self.width){
         match self.get_pixel(x,y){
           Some(pixel) => {
 
@@ -698,9 +845,9 @@ impl PointProcessor for Image {
     }
   }
   fn grayscale(&mut self) {
-    // NOTE: not optimized for format encoding, will be addressed later
-    for x in range(0, self.width){
-      for y in range(0, self.height){
+    // NOTE: not optimized for format encoding
+    for y in range(0, self.height){
+      for x in range(0, self.width){
         match self.get_pixel(x,y){
           Some(pixel) => {
             let mut red     = pixel.r as int;
@@ -1000,14 +1147,19 @@ fn main() {
   else {
     println!("Path to image: {}", args[1]);
 
-    // Read --> Write     Checklist
-    // PPM  --> PPM       Works
-    // PPM  --> BMP       Works
-    // BMP  --> PPM       Works
-    // BMP  --> BMP       Works
+    // Read     --> Write         Checklist
+    // PPM      --> PPM           Works
+    // PPM      --> BMP 3.x       Works
+    // BMP 3.x  --> PPM           Works
+    // BMP 3.x  --> BMP 3.x       Works
 
-    let mut image = Image::read_bmp(args[1]);
-    image.write_ppm("image.ppm");
+    // BMP 4.x  --> PPM           Works
+    // BMP 4.x  --> BMP 4.x       Works
+    // PPM      --> BMP 4.x       Works
+    // BMP 3.x  --> BMP 4.x       Works
+
+    let mut image = Image::read_ppm(args[1]);
+    image.write_bmp("image.bmp");
 
 
     // // Point Processor
@@ -1029,7 +1181,7 @@ fn main() {
 
     // let mut image5 = Image::read_bmp(args[1]);
     // image5.grayscale();
-    // image5.write_bmp("output5.bmp");    
+    // image5.write_bmp("output5.bmp");   
 
 
     // // Convolution Filter
@@ -1038,103 +1190,4 @@ fn main() {
     // image6.write_bmp("output6.bmp");
 
   }
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Need better understand of byte-wise file writing before implementing
-pub struct PNG {
-  width: uint,
-  height: uint,
-  data: ~[u8]
-}
-impl PNG {
-  // All notes based on W3 Documentation:
-  // http://www.w3.org/TR/PNG/#5PNG-file-signature
-
-  // Magic Number (ASCII/decimal):
-  //    89 P N G 0d 0a 1a 0a
-  // or 
-  //    0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A
-
-  // Chunk Format:
-  // Length - Type - Data - CRC
-  // 4 bytes - 4 bytes - [length] bytes - 4 byte
-
-  /******** Critical Chunks ********/
-  // IHDR Chunk: 0x49 0x48 0x44 0x52
-  // PLTE Chunk: 0x50 0x4C 0x54 0x45
-  // IDAT Chunk: 0x49 0x44 0x41 0x54
-  // IEND Chunk: 0x49 0x45 0x4E 0x44 
-  // These chunks are absolutely required to render PNG images
-
-  /* IHDR                 (Remember: 2 hex digits = 1 byte)
-     Width: 4 bytes       (1px = 0x00000001)
-     Height: 4 bytes
-     Bit depth: 1 byte              Must be 0x1, 0x2, 0x4, 0x8, or 0x16, depends on color type
-     Color type: 1 byte             Must be 0x00, 0x02, 0x03, 0x04 or 0x06
-     Compression method: 1 byte     Not implementing, set to 0x00
-     Filter method: 1 byte          Not implementing, set to 0x00
-     Interlace method: 1 byte       Not implementing, set to 0x00
-  */
-  // fn png_IHDR(width: uint, height: uint) -> ~[u8]{
-  //   let IHDR: ~[u8] = [0x49, 0x48, 0x44, 0x52, ];
-  //   return ()
-  // }
-
-  /* PLTE Chunk is ...
-   * Required for indexed color,
-   * Optional for truecolor & truecolor with alpha, 
-   * Cannot exist for grayscale & grayscale with alpha
-   */
-
-  pub fn new(width: uint, height: uint) -> PNG {
-    let size = 4 * height * width;
-    let mut buffer = from_elem(size, 0u8);
-    PNG{width: width, height: height, data: buffer}
-  }
-  
-  // pub fn write_file(&self, filename: &str) -> bool {
-  //   let path = Path::new(filename);
-  //   let mut file = File::create(&path);
-
-  //   let header = format!("89 50 4E 47 0D 0A 1A 0A");
-  //   file.write(header.as_bytes());
-  //   file.write(self.data);
-
-  //   true
-  // }
 }
