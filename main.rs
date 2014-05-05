@@ -33,10 +33,6 @@ extern {
   fn jpeg_destroy_compress();     //void
 }*/
 
-
-
-
-
 pub struct RGB_Pixel {
   r: u8,
   g: u8,
@@ -47,7 +43,6 @@ pub enum ColorType {    // Not yet implemented
   RGB = 24,
   RGBA = 32,
 }
-
 pub struct Image {
   width: uint,
   height: uint,
@@ -62,12 +57,6 @@ impl Image {
   }
  
   fn buffer_size(&self) -> uint {
-    // if self.color_type == RGB {  // This doesn't work
-    //   3 * self.width * self.height
-    // }
-    // else {
-    //   self.width * self.height
-    // }
     3 * self.width * self.height
   }
  
@@ -201,11 +190,6 @@ impl Image {  // Not complete, and may never be
             }
           }
         }
-        // println!("Comment: {}", str::from_utf8(comment_bytes).unwrap());
-        // println!("Width: {}", str::from_utf8(width_bytes).unwrap());
-        // println!("Height: {}", str::from_utf8(height_bytes).unwrap());
-        // println!("Color Mode: {}", str::from_utf8(color_mode_bytes).unwrap());
-        
         // Would want a more appropriate way of filling image_data_bytes
         loop {
           match image.read_byte() {
@@ -691,15 +675,6 @@ trait PointProcessor {
 impl PointProcessor for Image {
   fn negative(&mut self) {
     // Brute force        Time: 19257397 ns
-    // let start = time::precise_time_ns();
-    // let mut i = 0;
-    // for i in range(0, self.data.len()) {
-    //   self.data[i] = 255 - self.data[i];
-    // }
-    // let end = time::precise_time_ns();
-    // let time = end as uint - start as uint;
-    // println!("Time of brute force algorithm: {}", time);
-
     // Vectorize by 8     Time:  5118442 ns
     let start = time::precise_time_ns();
     let mut i = 0;
@@ -871,13 +846,10 @@ impl PointProcessor for Image {
   }
 }
 
-trait Convolution {
-  fn edge(&mut self);
+trait ConvolutionFilter {
   fn blur(&mut self);
-  fn emboss(&mut self);
 }
-impl Convolution for Image {
-  // Works
+impl ConvolutionFilter for Image {
   fn blur(&mut self) {
     // Brute force        Time: 264835676 ns
     // let start = time::precise_time_ns();
@@ -929,205 +901,6 @@ impl Convolution for Image {
         if green_sum < 0 {green_sum = 0;}
         if blue_sum < 0 {blue_sum = 0;}
 
-        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});
-        
-      }
-    }
-
-    // let end = time::precise_time_ns();
-    // let time = end as uint - start as uint;
-    // println!("Time of brute force algorithm: {}", time);
-  }
-
-  fn edge(&mut self) {
-    // Brute force        Time: 
-    // let start = time::precise_time_ns();
-    // let kernel = [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]];
-    let kernel1 = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];    
-
-    let number_of_kernel_rows = 3;
-    let number_of_kernel_columns = 3;
-    let mut kernel_center_x: uint = 3/2;
-    let mut kernel_center_y: uint = 3/2;
-
-    for y in range(0, self.height){
-      for x in range(0, self.width){
-        let mut red_sum: int = 0;
-        let mut green_sum: int = 0;
-        let mut blue_sum: int = 0;
-
-        for kernel_row in range(0, number_of_kernel_rows){
-          let mm = number_of_kernel_rows - 1 - kernel_row;
-
-          for kernel_column in range(0, number_of_kernel_columns){
-           let nn = number_of_kernel_columns - 1 - kernel_column;
-
-            // Index of input signal
-            let xx: int = x as int - (kernel_row - kernel_center_y as int);
-            let yy: int = y as int - (kernel_column - kernel_center_x as int);
-            
-            if xx >= 0 && xx < (self.width as int) && yy >= 0 && yy < (self.height as int){
-              let kernel_value = kernel1[mm as uint][nn as uint];
-              match self.get_pixel(xx as uint, yy as uint) {
-                Some(pixel) => {
-                  red_sum += (pixel.r as int * kernel_value);
-                  green_sum += (pixel.g as int * kernel_value);
-                  blue_sum += (pixel.b as int * kernel_value);
-                },
-                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", xx, yy, x, y)}
-              }
-            }  
-
-          }
-        }
-      }
-    }
-
-        // println!("hi");
-        // if y+1 < self.height && y-1 > 0 && x+1 < self.width && x-1 > 0 {
-        //   red_sum = self.get_pixel(x-1,y-1).unwrap().r as int*kernel[0][0]
-        //     + self.get_pixel(x,y-1).unwrap().r as int*kernel[0][1]
-        //     + self.get_pixel(x+1,y-1).unwrap().r as int*kernel[0][2]
-        //     + self.get_pixel(x-1,y).unwrap().r as int*kernel[1][0]
-        //     + self.get_pixel(x,y).unwrap().r as int*kernel[1][1]
-        //     + self.get_pixel(x+1,y).unwrap().r as int*kernel[1][2]
-        //     + self.get_pixel(x-1,y+1).unwrap().r as int*kernel[2][0]
-        //     + self.get_pixel(x,y+1).unwrap().r as int*kernel[2][1]
-        //     + self.get_pixel(x+1,y+1).unwrap().r as int*kernel[2][2];
-
-        //   green_sum = self.get_pixel(x-1,y-1).unwrap().g as int*kernel[0][0]
-        //     + self.get_pixel(x,y-1).unwrap().g as int*kernel[0][1]
-        //     + self.get_pixel(x+1,y-1).unwrap().g as int*kernel[0][2]
-        //     + self.get_pixel(x-1,y).unwrap().g as int*kernel[1][0]
-        //     + self.get_pixel(x,y).unwrap().g as int*kernel[1][1]
-        //     + self.get_pixel(x+1,y).unwrap().g as int*kernel[1][2]
-        //     + self.get_pixel(x-1,y+1).unwrap().g as int*kernel[2][0]
-        //     + self.get_pixel(x,y+1).unwrap().g as int*kernel[2][1]
-        //     + self.get_pixel(x+1,y+1).unwrap().g as int*kernel[2][2];
-
-        //   blue_sum = self.get_pixel(x-1,y-1).unwrap().b as int*kernel[0][0]
-        //     + self.get_pixel(x,y-1).unwrap().b as int*kernel[0][1]
-        //     + self.get_pixel(x+1,y-1).unwrap().b as int*kernel[0][2]
-        //     + self.get_pixel(x-1,y).unwrap().b as int*kernel[1][0]
-        //     + self.get_pixel(x,y).unwrap().b as int*kernel[1][1]
-        //     + self.get_pixel(x+1,y).unwrap().b as int*kernel[1][2]
-        //     + self.get_pixel(x-1,y+1).unwrap().b as int*kernel[2][0]
-        //     + self.get_pixel(x,y+1).unwrap().b as int*kernel[2][1]
-        //     + self.get_pixel(x+1,y+1).unwrap().b as int*kernel[2][2];
-        // }
-
-
-    let kernel2 = [[1, 2, 1], [0, 0, 0], [-1, -2, -1]];    
-
-    for y in range(0, self.height){
-      for x in range(0, self.width){
-        let mut red_sum: int = 0;
-        let mut green_sum: int = 0;
-        let mut blue_sum: int = 0;
-
-        for kernel_row in range(0, number_of_kernel_rows){
-          let mm = number_of_kernel_rows - 1 - kernel_row;
-
-          for kernel_column in range(0, number_of_kernel_columns){
-           let nn = number_of_kernel_columns - 1 - kernel_column;
-
-            // Index of input signal
-            let xx: int = x as int - (kernel_row - kernel_center_y as int);
-            let yy: int = y as int - (kernel_column - kernel_center_x as int);
-            
-            if xx >= 0 && xx < (self.width as int) && yy >= 0 && yy < (self.height as int){
-              let kernel_value = kernel2[mm as uint][nn as uint];
-              match self.get_pixel(xx as uint, yy as uint) {
-                Some(pixel) => {
-                  red_sum += (pixel.r as int * kernel_value);
-                  green_sum += (pixel.g as int * kernel_value);
-                  blue_sum += (pixel.b as int * kernel_value);
-                },
-                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", xx, yy, x, y)}
-              }
-            }  
-
-          }
-        }
-
-
-        if red_sum > 255 {red_sum = 255;}
-        if green_sum > 255 {green_sum = 255;}
-        if blue_sum > 255 {blue_sum = 255;}
-
-        if red_sum < 0 {red_sum = 0;}
-        if green_sum < 0 {green_sum = 0;}
-        if blue_sum < 0 {blue_sum = 0;}
-
-        println!("Pixel color ({}, {}, {})", red_sum, green_sum, blue_sum);
-        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});    
-      }
-    }
-    // let end = time::precise_time_ns();
-    // let time = end as uint - start as uint;
-    // println!("Time of brute force algorithm: {}", time);
-  }
-
-  fn emboss(&mut self) {
-    // Brute force        Time: 
-    // let start = time::precise_time_ns();
-  
-    let kernel = [[-1, -1, 0], [-1, 0, 1], [0, 1, 1]];
-    let bias = 128;
-    let mut kernel_center_x: uint = 3/2;
-    let mut kernel_center_y: uint = 3/2;
-
-    let mut initial_red = 0;
-    let mut initial_green = 0;
-    let mut initial_blue = 0;
-
-    for x in range(0, self.width){
-      for y in range(0, self.height){
-
-        let mut red_sum = 0;
-        let mut green_sum = 0;
-        let mut blue_sum = 0;
-
-        for kernel_row in range(0, 3){
-          for kernel_column in range(0, 3){
-
-            let kx: int = kernel_row - (kernel_center_y - x) as int;
-            let ky: int = kernel_column - (kernel_center_x - y) as int;
-            
-            if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
-              let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
-              match self.get_pixel(kx as uint, ky as uint) {
-                Some(pixel) => {
-                  red_sum += (pixel.r as int * kernel_value);
-                  green_sum += (pixel.g as int * kernel_value);
-                  blue_sum += (pixel.b as int * kernel_value);
-                  // println!("r: {}, g: {}, b:{}", red_sum, green_sum, blue_sum);
-                  //println!("\tKernel pixel: ({},{},{}) at ({},{})", pixel.r, pixel.g, pixel.b, kx, ky);
-                },
-                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", kx, ky, x, y)}
-              }
-            }  
-
-          }
-        }
-
-        // red_sum = red_sum/kernel_sum;
-        // green_sum = green_sum/kernel_sum;
-        // blue_sum = blue_sum/kernel_sum;
-
-        red_sum += bias;
-        green_sum += bias;
-        blue_sum += bias;
-
-        if red_sum > 255 {red_sum = 255;}
-        if green_sum > 255 {green_sum = 255;}
-        if blue_sum > 255 {blue_sum = 255;}
-
-        if red_sum < 0 {red_sum = 0;}
-        if green_sum < 0 {green_sum = 0;}
-        if blue_sum < 0 {blue_sum = 0;}
-
-        // println!("Output pixel: ({},{},{}) at ({},{})", red_sum, green_sum, blue_sum, x, y);
         self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});
         
       }
