@@ -1,42 +1,11 @@
-extern crate time;
-extern crate sync;
-extern crate libc;
+//extern crate time;
 
 use std::slice::from_elem;
-use std::slice;
 use std::path::posix::{Path};
 use std::io::File;
-use std::io;
 use std::os;
 use std::str;
 use std::uint;
-
-
-
-// pub type jpeg_decompress_struct = c_void;
-// pub type jpeg_error_mgr = c_void;
-
-// #[link(name = "jpeg")]
-// // #[link_args = "-ljpeg"]
-// extern {
-//   // Structs represented as *mut
-//   fn jpeg_std_error() -> mut* jpeg_error_mgr;            
-//   fn jpeg_create_decompress();    //void
-//   fn jpeg_stdio_src();            //void
-//   fn jpeg_read_header();          //int
-//   fn jpeg_start_decompress();     //bool
-//   fn jpeg_read_scanlines();       //JDIMENSION
-//   fn jpeg_finish_decompress();    //bool
-//   fn jpeg_destroy_decompress();   //void
-
-//   fn jpeg_create_compress();      //void
-//   fn jpeg_stdio_dest();           //void
-//   fn jpeg_set_defaults();         //void
-//   fn jpeg_start_compress();       //void
-//   fn jpeg_write_scanlines();      //JDIMENSION
-//   fn jpeg_finish_compress();      //void
-//   fn jpeg_destroy_compress();     //void
-// }
 
 pub struct RGB_Pixel {
   r: u8,
@@ -797,7 +766,7 @@ impl PointProcessor for Image {
   fn negative(&mut self) {
     // Brute force        Time: 19257397 ns
     // Vectorize by 8     Time:  5118442 ns
-    let start = time::precise_time_ns();
+    //let start = time::precise_time_ns();
     let mut i = 0;
     let length = self.data.len();
     let remainder = length % 8;
@@ -818,13 +787,11 @@ impl PointProcessor for Image {
         self.data[i] = 255 - self.data[i];
       }
     }
-    let end = time::precise_time_ns();
-    let time = end as uint - start as uint;
-    println!("Time of vectorized algorithm: {}", time);
+    // let end = time::precise_time_ns();
+    // let time = end as uint - start as uint;
+    // println!("Time of vectorized algorithm: {}", time);
   }
   fn brighten(&mut self, bias: int) {
-    // NOTE: For brightness, there are two ways of implementing: adding values to RGB values via a int bias value, or multiplying RGB values with a f32 gain value
-
     // Brute force        Time: 33111543 ns
     // let start = time::precise_time_ns();
     for y in range(0, self.height){
@@ -1034,83 +1001,57 @@ impl ConvolutionFilter for Image {
 }
 
 fn main() {
-  println!("Enter path to image you'd like to process: ");
-  let mut reader = io::stdin();
-  let given_path = reader.read_line().ok().unwrap_or("nothing".to_owned());
-  if str::eq(&given_path , &~"nothing"){
-    fail!("Couldn't find image");
-  }
-  let mut image;
-  if given_path.contains(&".ppm") {
-    image = Image::read_ppm(given_path)
-  } else if given_path.contains(&".bmp") {
-    image = Image::read_bmp(given_path)
+  let args = os::args();
+  if args.len() < 2 {
+    fail!("Image path not provided");
   }
   else {
-    fail!("Sorry, we don't support that image format");
-  }
+    let path_string = args[1].clone();
+    let save_file = args[2].clone();
+    let processor = args[3].clone();
 
-  println!("Type how you'd like to process the image:");
-  println!("negative, brighten, contrast, saturate, grayscale, blur\t(?)");
-  let choice = reader.read_line().ok().unwrap_or("nothing".to_owned());
-  if str::eq(&choice, &~"negative") {
-    image.negative();
-  }
-  else if str::eq(&choice, &~"brighten") {
-    print!("Enter change in brightness (must be an integer): ");
-    let bias = match from_str(reader.read_line().ok().unwrap_or("0".to_owned())) {
-      Some(num) => {num},
-      None  => {0},
-    };
-    println!("Brightening by {}", bias);
-    image.brighten(bias);
-  }
-  else if str::eq(&choice, &~"contrast") {
-    print!("Enter change in brightness (must be a float): ");
-    let gain = match from_str(reader.read_line().ok().unwrap_or("1.".to_owned())) {
-      Some(num) => {num},
-      None => {1.}
-    };
-    println!("Changing contrast by {}", gain);    
-    image.contrast(gain);
-  }
-  else if str::eq(&choice, &~"saturate") {
-    print!("Enter change in brightness (must be a float): ");
-    let gain = match from_str(reader.read_line().ok().unwrap_or("1.".to_owned())) {
-      Some(num) => {num},
-      None => {1.}
-    };
-    println!("Changing saturation by {}", gain);     
-    image.saturate(gain);
-  }
-  else if str::eq(&choice, &~"grayscale") {
-    image.grayscale();
-  }
-  else if str::eq(&choice, &~"blur") {
-    image.blur();
-  }
+    println!("Path to image: {}", &path_string);
+    let mut image;
+    if path_string.contains(&".ppm") {
+      image = Image::read_ppm(path_string);
+    }
+    else if path_string.contains(&".bmp") {
+      image = Image::read_bmp(path_string);
+    }
+    else {
+      fail!("Couldn't read given image format");
+    }
 
-  println!("How would you like to save your image?");
-  println!("PPM, BMP\t(?)");
-  let save_filetype = reader.read_line().ok().unwrap_or("nothing".to_owned());
+    if str::eq(&processor, &~"negative") {
+      image.negative();
+    }
+    else if str::eq(&processor, &~"brighten") {
+      image.brighten(125);
+    }
+    else if str::eq(&processor, &~"contrast") {
+      image.contrast(2.5);
+    }
+    else if str::eq(&processor, &~"saturate") {
+      image.saturate(2.5);
+    }
+    else if str::eq(&processor, &~"grayscale") {
+      image.grayscale();
+    }
+    else if str::eq(&processor, &~"blur") {
+      image.blur();
+    }
 
-  println!("What would you like to call it?");
-  let file_name = reader.read_line().ok().unwrap();
-  if save_filetype.contains(&".ppm") {
-    image.write_ppm(file_name);
-  } else if save_filetype.contains(&".bmp") {
-    image.write_bmp(file_name);
-  }    
-  else {
-    fail!("Sorry, I don't support that image format");
+    if save_file.contains(".bmp") {
+      image.write_bmp(save_file);
+    }
+    else if save_file.contains(".ppm") {
+      image.write_ppm(save_file);
+    }
+    else {
+      fail!("Couln't save image");
+    }
+
   }
-
-  // let args = os::args();
-  // if args.len() < 2 {
-  //   fail!("Image path not provided");
-  // }
-  // else {
-  //   println!("Path to image: {}", args[1]);
 
   //   // Read     --> Write         Checklist
   //   // PPM      --> PPM           Works
@@ -1123,36 +1064,4 @@ fn main() {
   //   // PPM      --> BMP 4.x       Works
   //   // BMP 3.x  --> BMP 4.x       Works
 
-  //   // let mut image = Image::read_bmp(args[1]);
-  //   // image.write_bmp("image.bmp");
-
-
-  //   // // Point Processor
-  //   // let mut image1 = Image::read_bmp(args[1]);
-  //   // image1.negative();
-  //   // image1.write_bmp("output1.bmp");
-
-  //   // let mut image2 = Image::read_bmp(args[1]);
-  //   // image2.brighten(100);
-  //   // image2.write_bmp("output2.bmp");
-
-  //   // let mut image3 = Image::read_bmp(args[1]);
-  //   // image3.contrast(12.5);
-  //   // image3.write_bmp("output3.bmp");
-
-  //   // let mut image4 = Image::read_bmp(args[1]);
-  //   // image4.saturate(12.5);
-  //   // image4.write_bmp("output4.bmp");
-
-  //   // let mut image5 = Image::read_bmp(args[1]);
-  //   // image5.grayscale();
-  //   // image5.write_bmp("output5.bmp");   
-
-
-  //   // // Convolution Filter
-  //   // let mut image6 = Image::read_bmp(args[1]);
-  //   // image6.blur();
-  //   // image6.write_bmp("output6.bmp");
-
-  // }
 }
