@@ -13,7 +13,7 @@ pub struct RGB_Pixel {
   b: u8,
 }
 pub enum ColorType {    // Not yet implemented
-  GRAYSCALE = 1,
+  GRAYSCALE = 8,
   RGB = 24,
   RGBA = 32,
 }
@@ -318,6 +318,32 @@ impl Image {
         }
 
         let mut remainder = offset as int - 14 - 24; // offset - fileheader size - read bytes
+
+        // Debug header data
+        /*println!("
+          Total file size (in bytes): {}
+          Pixel data starting byte: {}
+          Header size: {}\t(40 = BMP 3.x, 108 = BMP 4.x, 124 = BMP 5.x)
+          Dimensions: {}px x {}px
+          Number of color planes: {}\t(Should always be 1 in BMPs)
+          Bits per pixel: {}\t(8 = Grayscale, 24 = RGB, 32 = RGBA)
+          Compression type: {}
+          Size of bitmap (in bytes): {}\t(May be 0 if uncompressed)
+          
+          Number of bytes left unread in header: {}
+          ",
+          file_size,
+          offset,
+          header_size,
+          image_width,
+          image_height,
+          planes,
+          bits_per_pixel,
+          compression_type,
+          size_of_bitmap,
+          remainder
+        );*/
+
         // BMP 3.x
         if header_size as int == 40 {
           println!("Reading BMP 3.x");
@@ -328,6 +354,89 @@ impl Image {
             }
           }
           if compression_type as int == 0 {
+            if bits_per_pixel as int == 8 {
+              for y in range(0, image_height as int) {
+                for x in range(0, image_width as int) {
+                  match image.read_byte() {
+                    Ok(pixel_data) => {
+                      buffer.push(pixel_data);
+                      buffer.push(pixel_data);
+                      buffer.push(pixel_data);
+                    },
+                    Err(e)    => {fail!("Error reading BMP pixel")}
+                  }
+                }
+
+                // Padding based on image width, scanlines must be multiple of 4
+                match image_width % 4 {
+                  1 => {
+                    match image.read_byte() {
+                      Ok(padding) => {
+                        if padding as uint == 0 {
+                          continue;
+                        }
+                        else {
+                          break;
+                          fail!("Error reading padding at end of scanline");
+                        }
+                      },
+                      Err(e) => {
+                        fail!("Error checking padding at end of scanline");
+                      }
+                    }
+                  },
+                  2 => {
+                    match image.read_le_u16() {
+                      Ok(padding) => {
+                        if padding as uint == 0 {
+                          continue;
+                        }
+                        else {
+                          break;
+                          fail!("Error reading padding at end of scanline");
+                        }
+                      },
+                      Err(e) => {
+                        fail!("Error checking padding at end of scanline");
+                      }
+                    }
+                  },
+                  3 => {
+                    match image.read_byte() {
+                      Ok(padding) => {
+                        if padding as uint == 0 {
+                          match image.read_le_u16() {
+                            Ok(padding) => {
+                              if padding as uint == 0 {
+                                continue;
+                              }
+                              else {
+                                break;
+                                fail!("Error reading padding at end of scanline");
+                              }
+                            },
+                            Err(e) => {
+                              fail!("Error checking padding at end of scanline");
+                            }
+                          }
+                        }
+                        else {
+                          break;
+                          fail!("Error reading padding at end of scanline");
+                        }
+                      },
+                      Err(e) => {
+                        fail!("Error checking padding at end of scanline");
+                      }
+                    }
+                  },
+                  _ => {
+                    continue;
+                  }
+                }
+              }              
+            }
+
             if bits_per_pixel as int == 24 {
               for y in range(0, image_height as int) {
                 for x in range(0, image_width as int) {
@@ -532,7 +641,6 @@ impl Image {
     }
     // Without this scanlines are flipped in image data
     if image_height as int > 0 {
-      if bits_per_pixel as int == 24 {
         for i in range(0, image_height){
           let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB
           let end_index: uint = start_index + (image_width as uint * 3); // Off by one as slice function doesn't include last index
@@ -540,9 +648,18 @@ impl Image {
           let scanline = buffer.slice(start_index, end_index);
           image_data_bytes.push_all(scanline);
         }
-      }
     }
-    Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}
+
+    // GRAYSCALE not properly implemented yet
+    if bits_per_pixel == 8 {
+      Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
+    }
+    else if bits_per_pixel == 24 {
+      Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
+    }
+    else {
+      fail!("Error writing image as valid colorspace")
+    }
   }
 
   pub fn write_bmp(&mut self, filename: &str) -> bool {
@@ -551,10 +668,114 @@ impl Image {
     let version = 4;  // For testing purposes
     let signature = "BM";
 
+    //self.color_type = GRAYSCALE;
+
     // Save as BMP 4.x
     if version == 4 {
       match self.color_type {
         // No padding needed for RGBA
+        /*GRAYSCALE => {
+          let filesize: u32 = ((self.width * self.height) + 108 + 14) as u32; 
+          let reserved1: u16 = 0 as u16;
+          let reserved2: u16 = 0 as u16;
+          let bitmap_offset: u32 = 122 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 122
+          file.write(signature.as_bytes());
+          file.write_le_u32(filesize);
+          file.write_le_u16(reserved1);
+          file.write_le_u16(reserved2);
+          file.write_le_u32(bitmap_offset);
+
+          let header_size: u32 = 108 as u32;  // Size in bytes
+          let image_width: u32 = self.width as u32;    // In pixels
+          let image_height: u32 = self.height as u32;   // In pixels
+          let planes: u16 = 1 as u16;         // Number of color planes, in BMP this is always 1
+          let bits_per_pixel: u16 = 8 as u16;  // Number of bits per pixel
+          file.write_le_u32(header_size);
+          file.write_le_u32(image_width);
+          file.write_le_u32(image_height);
+          file.write_le_u16(planes);
+          file.write_le_u16(bits_per_pixel);
+
+          let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
+          let size_of_bitmap: u32 = (self.width * self.height) as u32; // Size in bytes, 0 when uncompressed = 0
+          let horizontal_resolution: u32 = 2835 as u32;  // In pixels per meter
+          let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
+          let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
+          let colors_important: u32 = 0 as u32;   // 0 if all colors are important
+          file.write_le_u32(compression_type);
+          file.write_le_u32(size_of_bitmap);
+          file.write_le_u32(horizontal_resolution);
+          file.write_le_u32(vertical_resolution);
+          file.write_le_u32(colors_used);
+          file.write_le_u32(colors_important);        
+
+          let red_mask: u32 = 0x00000000 as u32; //BGRs when not compressed? This is unclear
+          let green_mask: u32 = 0x00000000 as u32;
+          let blue_mask: u32 = 0x00000000 as u32;
+          let alpha_mask: u32 = 0x00000000 as u32;
+          let cs_type: u32 = 0 as u32;
+          let endpoint_red_x: u32 = 0 as u32;
+          let endpoint_red_y: u32 = 0 as u32;
+          let endpoint_red_z: u32 = 0 as u32;
+          let endpoint_green_x: u32 = 0 as u32;
+          let endpoint_green_y: u32 = 0 as u32;
+          let endpoint_green_z: u32 = 0 as u32;
+          let endpoint_blue_x: u32 = 0 as u32;
+          let endpoint_blue_y: u32 = 0 as u32;
+          let endpoint_blue_z: u32 = 0 as u32;
+          let gamma_red: u32 = 0 as u32;
+          let gamma_green: u32 = 0 as u32;
+          let gamma_blue: u32 = 0 as u32;
+          file.write_le_u32(red_mask);
+          file.write_le_u32(green_mask);
+          file.write_le_u32(blue_mask);
+          file.write_le_u32(alpha_mask);
+          file.write_le_u32(cs_type);
+          file.write_le_u32(endpoint_red_x);
+          file.write_le_u32(endpoint_red_y);
+          file.write_le_u32(endpoint_red_z);
+          file.write_le_u32(endpoint_green_x);
+          file.write_le_u32(endpoint_green_y);
+          file.write_le_u32(endpoint_green_z);
+          file.write_le_u32(endpoint_blue_x);
+          file.write_le_u32(endpoint_blue_y);
+          file.write_le_u32(endpoint_blue_z);
+          file.write_le_u32(gamma_red);
+          file.write_le_u32(gamma_green);
+          file.write_le_u32(gamma_blue);
+
+          if compression_type == 0 {
+            for y in range(0, self.height) {
+              let bmp_y = self.height - 1 - y;
+              for x in range(0, self.width) {
+                let index = x + y * self.width;
+                println!("{},{} => {}",x, bmp_y, index);
+                file.write_u8(self.data[index]);
+              }
+
+              // Padding based on image width, scanlines must be multiple of 4
+              match image_width % 4 {
+                1 => {
+                  file.write_u8(0);
+                },
+                2 => {
+                  file.write_u8(0);
+                  file.write_u8(0);
+                },
+                3 => {
+                  file.write_u8(0);
+                  file.write_u8(0);
+                  file.write_u8(0);
+                },
+                _ => {
+                  continue;
+                }
+              }
+            }
+          }
+          true
+        
+        }*/
         RGB => {
           let filesize: u32 = ((self.width * self.height * 3) + 108 + 14) as u32; 
           let reserved1: u16 = 0 as u16;
@@ -629,7 +850,9 @@ impl Image {
             for y in range(0, self.height) {
               let bmp_y = self.height - 1 - y;
               for x in range(0, self.width) {
+                
                 match self.get_pixel(x,bmp_y) {
+
                   Some(pixel) => {
                     let blue = pixel.b;
                     let green = pixel.g;
@@ -641,6 +864,7 @@ impl Image {
                   },
                   None => {fail!("Error writing image as BMP file")}
                 }
+
               }
 
               // Padding based on image width, scanlines must be multiple of 4
@@ -1006,62 +1230,20 @@ fn main() {
     fail!("Image path not provided");
   }
   else {
-    let path_string = args[1].clone();
-    let save_file = args[2].clone();
-    let processor = args[3].clone();
 
-    println!("Path to image: {}", &path_string);
-    let mut image;
-    if path_string.contains(&".ppm") {
-      image = Image::read_ppm(path_string);
-    }
-    else if path_string.contains(&".bmp") {
-      image = Image::read_bmp(path_string);
-    }
-    else {
-      fail!("Couldn't read given image format");
-    }
+    let mut image = Image::read_bmp(args[1]);
+    image.write_bmp("image.bmp");
 
-    if str::eq(&processor, &~"negative") {
-      image.negative();
-    }
-    else if str::eq(&processor, &~"brighten") {
-      image.brighten(125);
-    }
-    else if str::eq(&processor, &~"contrast") {
-      image.contrast(2.5);
-    }
-    else if str::eq(&processor, &~"saturate") {
-      image.saturate(2.5);
-    }
-    else if str::eq(&processor, &~"grayscale") {
-      image.grayscale();
-    }
-    else if str::eq(&processor, &~"blur") {
-      image.blur();
-    }
+    // Read     --> Write         Checklist
+    // PPM      --> PPM           Works
+    // PPM      --> BMP 3.x       Works
+    // BMP 3.x  --> PPM           Works
+    // BMP 3.x  --> BMP 3.x       Works
 
-    if save_file.contains(".bmp") {
-      image.write_bmp(save_file);
-    }
-    else if save_file.contains(".ppm") {
-      image.write_ppm(save_file);
-    }
-    else {
-      fail!("Couln't save image");
-    }
-
+    // BMP 4.x  --> PPM           Works
+    // BMP 4.x  --> BMP 4.x       Works
+    // PPM      --> BMP 4.x       Works
+    // BMP 3.x  --> BMP 4.x       Works
   }
-
-  //   // Read     --> Write         Checklist
-  //   // PPM      --> PPM           Works
-  //   // PPM      --> BMP 3.x       Works
-  //   // BMP 3.x  --> PPM           Works
-  //   // BMP 3.x  --> BMP 3.x       Works
-
-  //   // BMP 4.x  --> PPM           Works
-  //   // BMP 4.x  --> BMP 4.x       Works
-  //   // PPM      --> BMP 4.x       Works
-  //   // BMP 3.x  --> BMP 4.x       Works
 
 }
