@@ -218,7 +218,7 @@ impl Image {
     let mut image_width: u32 = 0 as u32;
     let mut image_height: u32 = 0 as u32;
     let mut planes: u16 = 0 as u16;
-    let mut bits_per_pixel: u16 = 0 as u16;   // 1 = Monochrome (not grayscale), 24 = RGB, 32 = RGBA
+    let mut bits_per_pixel: u16 = 0 as u16;   // 8 = Grayscale, 24 = RGB, 32 = RGBA
     let mut compression_type: u32 = 0 as u32;
     let mut size_of_bitmap: u32 = 0 as u32;   
 
@@ -345,6 +345,7 @@ impl Image {
         );*/
 
         // BMP 3.x
+        /*
         if header_size as int == 40 {
           println!("Reading BMP 3.x");
           for i in range(0, remainder) {
@@ -534,108 +535,122 @@ impl Image {
 
         }
         // BMP 4.x
-        else {
-          for i in range(0, remainder) {
-            match image.read_byte() {
-              Ok(byte)  => {continue},
-              Err(e)    => {fail!("Error reading BMP header: {}", e)}
-            }
+        else { */
+
+        for i in range(0, remainder) {
+          match image.read_byte() {
+            Ok(byte)  => {continue},
+            Err(e)    => {fail!("Error reading BMP header: {}", e)}
           }
-          if compression_type as int == 0 {    
-            if bits_per_pixel as int == 24 {
-              for y in range(0, image_height) {
-                for x in range(0, image_width) {
-                  match image.read_exact(3) {
-                    Ok(mut pixel_data) => {
-                      match pixel_data.pop() {
-                        Some(red) => {buffer.push(red)},
-                        None  => {fail!("Error getting red component for BMP pixel")}
+        }
+        if compression_type as int == 0 {
+          // GRAYSCALE
+          if bits_per_pixel as int == 8 {
+            fail!("GRAYSCALE Image not implemented. Exiting.");
+          }
+          
+          // RGB    
+          if bits_per_pixel as int == 24 {
+            println!("RGB Image");
+            for y in range(0, image_height) {
+              for x in range(0, image_width) {
+                match image.read_exact(3) {
+                  Ok(mut pixel_data) => {
+                    match pixel_data.pop() {
+                      Some(red) => {buffer.push(red)},
+                      None  => {fail!("Error getting red component for BMP pixel")}
+                    }
+                    match pixel_data.pop() {
+                      Some(green) => {buffer.push(green)},
+                      None  => {fail!("Error getting green component for BMP pixel")}
+                    }
+                    match pixel_data.pop() {
+                      Some(blue) => {buffer.push(blue)},
+                      None  => {fail!("Error getting blue component for BMP pixel")}
+                    }
+                  },
+                  Err(e)    => {fail!("Error reading BMP pixel")}
+                }
+              }
+
+              // Padding based on image width, scanlines must be multiple of 4
+              match image_width % 4 {
+                1 => {
+                  match image.read_byte() {
+                    Ok(padding) => {
+                      if padding as uint == 0 {
+                        continue;
                       }
-                      match pixel_data.pop() {
-                        Some(green) => {buffer.push(green)},
-                        None  => {fail!("Error getting green component for BMP pixel")}
-                      }
-                      match pixel_data.pop() {
-                        Some(blue) => {buffer.push(blue)},
-                        None  => {fail!("Error getting blue component for BMP pixel")}
+                      else {
+                        break;
+                        fail!("Error reading padding at end of scanline");
                       }
                     },
-                    Err(e)    => {fail!("Error reading BMP pixel")}
+                    Err(e) => {
+                      fail!("Error checking padding at end of scanline");
+                    }
                   }
-                }
-
-                // Padding based on image width, scanlines must be multiple of 4
-                match image_width % 4 {
-                  1 => {
-                    match image.read_byte() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          continue;
-                        }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
+                },
+                2 => {
+                  match image.read_le_u16() {
+                    Ok(padding) => {
+                      if padding as uint == 0 {
+                        continue;
                       }
-                    }
-                  },
-                  2 => {
-                    match image.read_le_u16() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          continue;
-                        }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
+                      else {
+                        break;
+                        fail!("Error reading padding at end of scanline");
                       }
+                    },
+                    Err(e) => {
+                      fail!("Error checking padding at end of scanline");
                     }
-                  },
-                  3 => {
-                    match image.read_byte() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          match image.read_le_u16() {
-                            Ok(padding) => {
-                              if padding as uint == 0 {
-                                continue;
-                              }
-                              else {
-                                break;
-                                fail!("Error reading padding at end of scanline");
-                              }
-                            },
-                            Err(e) => {
-                              fail!("Error checking padding at end of scanline");
+                  }
+                },
+                3 => {
+                  match image.read_byte() {
+                    Ok(padding) => {
+                      if padding as uint == 0 {
+                        match image.read_le_u16() {
+                          Ok(padding) => {
+                            if padding as uint == 0 {
+                              continue;
                             }
+                            else {
+                              break;
+                              fail!("Error reading padding at end of scanline");
+                            }
+                          },
+                          Err(e) => {
+                            fail!("Error checking padding at end of scanline");
                           }
                         }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
                       }
+                      else {
+                        break;
+                        fail!("Error reading padding at end of scanline");
+                      }
+                    },
+                    Err(e) => {
+                      fail!("Error checking padding at end of scanline");
                     }
-                  },
-                  _ => {
-                    continue;
                   }
+                },
+                _ => {
+                  continue;
                 }
-
               }
+
             }
-          }                   
-        }
+          }
+
+          // RGBA
+          if bits_per_pixel as int == 36 {
+            fail!("RGBA Image not implemented. Exiting.");
+          }
+        }                   
+        
+        //}
       },
       Err(e)  => {println!("Error opening file: {}", e)}
     }
