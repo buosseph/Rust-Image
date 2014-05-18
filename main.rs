@@ -203,11 +203,18 @@ impl Image {
    * If height is positive, scanlines stored BOTTOM UP --> store pixels starting from bottom row when writing
    * If height is negative, scanliens stored TOP DOWN  --> No flip required to match Image struct pixel array orientation
    * Image_width % 4 = # of bytes for padding per scanline
+   * Only v4 an v5 can produce RGBA images
    */
 
   // Good example for furture development of image format: http://www.kalytta.com/bitmap.h
   // See http://msdn.microsoft.com/en-us/library/dd183381(v=vs.85).aspx for more information on meta data in various headers
 
+
+  /* Reader Status:
+   *  - 24-bit BMPv3 and BMPv4 formats read correctly
+   *  - 8-bit BMPv3 and BMPv4 formats read correctly
+   *  - All 36-bit images failing in wrong location (something else is wrong)
+   */
   pub fn read_bmp(image_path_str: &str) -> Image{
     let path = Path::new(image_path_str);
 
@@ -546,7 +553,88 @@ impl Image {
         if compression_type as int == 0 {
           // GRAYSCALE
           if bits_per_pixel as int == 8 {
-            fail!("GRAYSCALE Image not implemented. Exiting.");
+            println!("GRAYSCALE Image (will be written as RGB)");
+            for y in range(0, image_height) {
+              for x in range(0, image_width) {
+                match image.read_byte() {
+                  Ok(pixel_data) => {
+                    buffer.push(pixel_data);
+                    buffer.push(pixel_data);
+                    buffer.push(pixel_data);
+                  },
+                  Err(e)    => {fail!("Error reading BMP pixel")}
+                }
+              }
+
+              // Padding based on image width, all scanlines must be multiple of 4
+              match image_width % 4 {
+                1 => {
+                  match image.read_byte() {
+                    Ok(padding) => {
+                      if padding as uint == 0 {
+                        continue;
+                      }
+                      else {
+                        break;
+                        fail!("Error reading padding at end of scanline");
+                      }
+                    },
+                    Err(e) => {
+                      fail!("Error checking padding at end of scanline");
+                    }
+                  }
+                },
+                2 => {
+                  match image.read_le_u16() {
+                    Ok(padding) => {
+                      if padding as uint == 0 {
+                        continue;
+                      }
+                      else {
+                        break;
+                        fail!("Error reading padding at end of scanline");
+                      }
+                    },
+                    Err(e) => {
+                      fail!("Error checking padding at end of scanline");
+                    }
+                  }
+                },
+                3 => {
+                  match image.read_byte() {
+                    Ok(padding) => {
+                      if padding as uint == 0 {
+                        match image.read_le_u16() {
+                          Ok(padding) => {
+                            if padding as uint == 0 {
+                              continue;
+                            }
+                            else {
+                              break;
+                              fail!("Error reading padding at end of scanline");
+                            }
+                          },
+                          Err(e) => {
+                            fail!("Error checking padding at end of scanline");
+                          }
+                        }
+                      }
+                      else {
+                        break;
+                        fail!("Error reading padding at end of scanline");
+                      }
+                    },
+                    Err(e) => {
+                      fail!("Error checking padding at end of scanline");
+                    }
+                  }
+                },
+                _ => {
+                  continue;
+                }
+              }
+
+            }
           }
           
           // RGB    
@@ -573,7 +661,7 @@ impl Image {
                 }
               }
 
-              // Padding based on image width, scanlines must be multiple of 4
+              // Padding based on image width, all scanlines must be multiple of 4
               match image_width % 4 {
                 1 => {
                   match image.read_byte() {
