@@ -206,13 +206,9 @@ impl Image {
    * Only v4 an v5 can produce RGBA images
    */
 
-  // Good example for furture development of image format: http://www.kalytta.com/bitmap.h
-  // See http://msdn.microsoft.com/en-us/library/dd183381(v=vs.85).aspx for more information on meta data in various headers
-
-
   /* Reader Status:
-   *  - 24-bit BMPv3 and BMPv4 formats read correctly
-   *  - 8-bit BMPv3 and BMPv4 formats read correctly
+   *  - 24-bit read correctly
+   *  - 8-bit read correctly
    *  - All 36-bit images failing in wrong location (something else is wrong)
    */
   pub fn read_bmp(image_path_str: &str) -> Image{
@@ -221,7 +217,7 @@ impl Image {
     let mut signature: ~[u8] = ~[0 as u8, 0 as u8];
     let mut file_size: u32 = 0 as u32;      
     let mut offset: u32 = 0 as u32;
-    let mut header_size: u32 = 0 as u32;      // 40 = BMP 3.x, 108 = BMP 4.x, 124 = BMP 5.x
+    let mut header_size: u32 = 0 as u32;      // 40 = BMPv3, 108 = BMPv4, 124 = BMPv5
     let mut image_width: u32 = 0 as u32;
     let mut image_height: u32 = 0 as u32;
     let mut planes: u16 = 0 as u16;
@@ -350,199 +346,6 @@ impl Image {
           size_of_bitmap,
           remainder
         );*/
-
-        // BMP 3.x
-        /*
-        if header_size as int == 40 {
-          println!("Reading BMP 3.x");
-          for i in range(0, remainder) {
-            match image.read_byte() {
-              Ok(byte)  => {continue},
-              Err(e)    => {fail!("Error reading BMP 3.x header: {}", e)}
-            }
-          }
-          if compression_type as int == 0 {
-            if bits_per_pixel as int == 8 {
-              for y in range(0, image_height as int) {
-                for x in range(0, image_width as int) {
-                  match image.read_byte() {
-                    Ok(pixel_data) => {
-                      buffer.push(pixel_data);
-                      buffer.push(pixel_data);
-                      buffer.push(pixel_data);
-                    },
-                    Err(e)    => {fail!("Error reading BMP pixel")}
-                  }
-                }
-
-                // Padding based on image width, scanlines must be multiple of 4
-                match image_width % 4 {
-                  1 => {
-                    match image.read_byte() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          continue;
-                        }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
-                      }
-                    }
-                  },
-                  2 => {
-                    match image.read_le_u16() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          continue;
-                        }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
-                      }
-                    }
-                  },
-                  3 => {
-                    match image.read_byte() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          match image.read_le_u16() {
-                            Ok(padding) => {
-                              if padding as uint == 0 {
-                                continue;
-                              }
-                              else {
-                                break;
-                                fail!("Error reading padding at end of scanline");
-                              }
-                            },
-                            Err(e) => {
-                              fail!("Error checking padding at end of scanline");
-                            }
-                          }
-                        }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
-                      }
-                    }
-                  },
-                  _ => {
-                    continue;
-                  }
-                }
-              }              
-            }
-
-            if bits_per_pixel as int == 24 {
-              for y in range(0, image_height as int) {
-                for x in range(0, image_width as int) {
-                  match image.read_exact(3) {
-                    Ok(mut pixel_data) => {
-                      match pixel_data.pop() {
-                        Some(red) => {buffer.push(red)},
-                        None  => {fail!("Error getting red component for BMP pixel")}
-                      }
-                      match pixel_data.pop() {
-                        Some(green) => {buffer.push(green)},
-                        None  => {fail!("Error getting green component for BMP pixel")}
-                      }
-                      match pixel_data.pop() {
-                        Some(blue) => {buffer.push(blue)},
-                        None  => {fail!("Error getting blue component for BMP pixel")}
-                      }
-
-                    },
-                    Err(e)    => {fail!("Error reading BMP pixel")}
-                  }
-                }
-
-                // Padding based on image width, scanlines must be multiple of 4
-                match image_width % 4 {
-                  1 => {
-                    match image.read_byte() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          continue;
-                        }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
-                      }
-                    }
-                  },
-                  2 => {
-                    match image.read_le_u16() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          continue;
-                        }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
-                      }
-                    }
-                  },
-                  3 => {
-                    match image.read_byte() {
-                      Ok(padding) => {
-                        if padding as uint == 0 {
-                          match image.read_le_u16() {
-                            Ok(padding) => {
-                              if padding as uint == 0 {
-                                continue;
-                              }
-                              else {
-                                break;
-                                fail!("Error reading padding at end of scanline");
-                              }
-                            },
-                            Err(e) => {
-                              fail!("Error checking padding at end of scanline");
-                            }
-                          }
-                        }
-                        else {
-                          break;
-                          fail!("Error reading padding at end of scanline");
-                        }
-                      },
-                      Err(e) => {
-                        fail!("Error checking padding at end of scanline");
-                      }
-                    }
-                  },
-                  _ => {
-                    continue;
-                  }
-                }
-
-              }              
-            }
-          }
-
-        }
-        // BMP 4.x
-        else { */
 
         for i in range(0, remainder) {
           match image.read_byte() {
@@ -755,7 +558,7 @@ impl Image {
 
     // GRAYSCALE not properly implemented yet
     if bits_per_pixel == 8 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
+      Image{width: image_width as uint, height: image_height as uint, color_type: GRAYSCALE, data: image_data_bytes}    
     }
     else if bits_per_pixel == 24 {
       Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
@@ -765,6 +568,11 @@ impl Image {
     }
   }
 
+  /* Writer Status:
+   *  - Wrong bitmap size is written (forgot padding) --> wrong filesize 
+   *  - Should default to BMPv4 for GRAYSCALE and RGB
+   *  - Default to BITMAPINFOHEADER for RGBA or BMPv5 or just BMPv3 with RGBA masks???
+   */
   pub fn write_bmp(&mut self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
@@ -773,12 +581,14 @@ impl Image {
 
     //self.color_type = GRAYSCALE;
 
+    let padding = self.height * (self.width % 4);
+
+
     // Save as BMP 4.x
     if version == 4 {
       match self.color_type {
-        // No padding needed for RGBA
-        /*GRAYSCALE => {
-          let filesize: u32 = ((self.width * self.height) + 108 + 14) as u32; 
+        GRAYSCALE => {
+          let filesize: u32 = ((self.width * self.height) + padding + 108 + 14) as u32; 
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
           let bitmap_offset: u32 = 122 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 122
@@ -800,7 +610,8 @@ impl Image {
           file.write_le_u16(bits_per_pixel);
 
           let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
-          let size_of_bitmap: u32 = (self.width * self.height) as u32; // Size in bytes, 0 when uncompressed = 0
+          // size_of_bitmap = width * height + (height * padding_size) + header size
+          let size_of_bitmap: u32 = (self.width * self.height + padding) as u32; // Size in bytes, 0 when uncompressed = 0
           let horizontal_resolution: u32 = 2835 as u32;  // In pixels per meter
           let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
           let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
@@ -878,9 +689,11 @@ impl Image {
           }
           true
         
-        }*/
+        }
+
+
         RGB => {
-          let filesize: u32 = ((self.width * self.height * 3) + 108 + 14) as u32; 
+          let filesize: u32 = ((self.width * self.height * 3) + padding + 108 + 14) as u32; 
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
           let bitmap_offset: u32 = 122 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 122
@@ -902,7 +715,7 @@ impl Image {
           file.write_le_u16(bits_per_pixel);
 
           let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
-          let size_of_bitmap: u32 = (self.width * self.height * 3) as u32; // Size in bytes, 0 when uncompressed = 0
+          let size_of_bitmap: u32 = (self.width * self.height * 3 + padding) as u32; // Size in bytes, 0 when uncompressed = 0
           let horizontal_resolution: u32 = 2835 as u32;  // In pixels per meter
           let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
           let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
