@@ -209,7 +209,7 @@ impl Image {
   /* Reader Status:
    *  - 24-bit read correctly
    *  - 8-bit read correctly
-   *  - All 36-bit images failing in wrong location (something else is wrong)
+   *  - 32-bit images read and stored correctly in Image struct
    */
   pub fn read_bmp(image_path_str: &str) -> Image{
     let path = Path::new(image_path_str);
@@ -346,6 +346,7 @@ impl Image {
           size_of_bitmap,
           remainder
         );*/
+  
 
         for i in range(0, remainder) {
           match image.read_byte() {
@@ -353,6 +354,8 @@ impl Image {
             Err(e)    => {fail!("Error reading BMP header: {}", e)}
           }
         }
+
+        // BI_RGB means uncompressed (BGR)
         if compression_type as int == 0 {
           // GRAYSCALE
           if bits_per_pixel as int == 8 {
@@ -534,13 +537,44 @@ impl Image {
 
             }
           }
+        }
 
+
+        // If bits_per_pixel = 16 or 32, then compresion must be 3 
+        // BI_BITFEILDS means image is uncompressed and components values are stored according to component masks in header
+        // - Should be able to identify color channels through masks. Is it common to store masks and data differently than ABGR?
+        if compression_type as int == 3 { 
           // RGBA
-          if bits_per_pixel as int == 36 {
-            fail!("RGBA Image not implemented. Exiting.");
+          if bits_per_pixel as int == 32 {
+            println!("RGBA Image");
+            for y in range(0, image_height) {
+              for x in range(0, image_width) {
+                match image.read_exact(4) {
+                  Ok(mut pixel_data) => {       
+                    match pixel_data.pop() {
+                      Some(red) => {buffer.push(red)},
+                      None  => {fail!("Error getting red component for BMP pixel")}
+                    }
+                    match pixel_data.pop() {
+                      Some(green) => {buffer.push(green)},
+                      None  => {fail!("Error getting green component for BMP pixel")}
+                    }
+                    match pixel_data.pop() {
+                      Some(blue) => {buffer.push(blue)},
+                      None  => {fail!("Error getting blue component for BMP pixel")}
+                    }
+                    match pixel_data.pop() {
+                      Some(alpha) => {buffer.push(alpha)},
+                      None  => {fail!("Error getting alpha component for BMP pixel")}
+                    }                    
+                  },
+                  Err(e)    => {fail!("Error reading BMP pixel")}
+                }
+              }
+            }
           }
-        }                   
-        
+        }
+
         //}
       },
       Err(e)  => {println!("Error opening file: {}", e)}
@@ -548,13 +582,25 @@ impl Image {
     // Without this scanlines are flipped in image data
     if image_height as int > 0 {
         for i in range(0, image_height){
-          let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB
-          let end_index: uint = start_index + (image_width as uint * 3); // Off by one as slice function doesn't include last index
 
-          let scanline = buffer.slice(start_index, end_index);
-          image_data_bytes.push_all(scanline);
+          if bits_per_pixel == 24 {
+            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB
+            let end_index: uint = start_index + (image_width as uint * 3); // Off by one as slice function doesn't include last index
+
+            let scanline = buffer.slice(start_index, end_index);
+            image_data_bytes.push_all(scanline);
+          }
+          if bits_per_pixel == 32 {
+            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 4;  // 4 because RGBA
+            let end_index: uint = start_index + (image_width as uint * 4); // Off by one as slice function doesn't include last index
+
+            let scanline = buffer.slice(start_index, end_index);
+            image_data_bytes.push_all(scanline);
+          }          
+
         }
     }
+
 
     // GRAYSCALE not properly implemented yet
     if bits_per_pixel == 8 {
@@ -563,13 +609,15 @@ impl Image {
     else if bits_per_pixel == 24 {
       Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
     }
+    else if bits_per_pixel == 32 {
+      Image{width: image_width as uint, height: image_height as uint, color_type: RGBA, data: image_data_bytes}    
+    }
     else {
       fail!("Error writing image as valid colorspace")
     }
   }
 
-  /* Writer Status:
-   *  - Wrong bitmap size is written (forgot padding) --> wrong filesize 
+  /* Writer Status: 
    *  - Should default to BMPv4 for GRAYSCALE and RGB
    *  - Default to BITMAPINFOHEADER for RGBA or BMPv5 or just BMPv3 with RGBA masks???
    */
@@ -591,7 +639,7 @@ impl Image {
           let filesize: u32 = ((self.width * self.height) + padding + 108 + 14) as u32; 
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
-          let bitmap_offset: u32 = 122 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 122
+          let bitmap_offset: u32 = 122 as u32;
           file.write(signature.as_bytes());
           file.write_le_u32(filesize);
           file.write_le_u16(reserved1);
@@ -610,7 +658,6 @@ impl Image {
           file.write_le_u16(bits_per_pixel);
 
           let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
-          // size_of_bitmap = width * height + (height * padding_size) + header size
           let size_of_bitmap: u32 = (self.width * self.height + padding) as u32; // Size in bytes, 0 when uncompressed = 0
           let horizontal_resolution: u32 = 2835 as u32;  // In pixels per meter
           let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
@@ -688,9 +735,7 @@ impl Image {
             }
           }
           true
-        
         }
-
 
         RGB => {
           let filesize: u32 = ((self.width * self.height * 3) + padding + 108 + 14) as u32; 
@@ -1148,7 +1193,29 @@ fn main() {
   else {
 
     let mut image = Image::read_bmp(args[1]);
-    image.write_bmp("image.bmp");
+
+    for y in range(0, image.height) {
+      for x in range(0, image.width) {
+        match image.color_type {
+          RGB => {
+            match image.get_pixel(x,y) {
+              Some(p) => {
+                print!("({}, {}, {}) ", p.r, p.g, p.b);  
+              },
+              None  =>{fail!("Couln't read pixel")}
+            }
+          },
+          RGBA => {
+            let i = x * 4 + image.width * y  * 4;
+            print!("({}, {}, {}, {}) ", image.data[i], image.data[i+1], image.data[i+2], image.data[i+3],);  
+          }
+          _ => {fail!("Couldn't match read image color type");}
+        }
+      }
+      print!("\n");
+    }
+
+    //image.write_bmp("image.bmp");
 
     // Read     --> Write         Checklist
     // PPM      --> PPM           Works
