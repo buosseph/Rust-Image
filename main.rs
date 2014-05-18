@@ -208,8 +208,8 @@ impl Image {
 
   /* Reader Status:
    *  - 24-bit read correctly
-   *  - 8-bit read correctly
-   *  - 32-bit images read and stored correctly in Image struct
+   *  - 8-bit read as 24-bit images (need color pallete for grayscale images)
+   *  - 32-bit read correctly
    */
   pub fn read_bmp(image_path_str: &str) -> Image{
     let path = Path::new(image_path_str);
@@ -359,11 +359,12 @@ impl Image {
         if compression_type as int == 0 {
           // GRAYSCALE
           if bits_per_pixel as int == 8 {
-            println!("GRAYSCALE Image (will be written as RGB)");
+            println!("GRAYSCALE Image (will be saved as RGB)");
             for y in range(0, image_height) {
               for x in range(0, image_width) {
                 match image.read_byte() {
                   Ok(pixel_data) => {
+                    // Saving as RGB
                     buffer.push(pixel_data);
                     buffer.push(pixel_data);
                     buffer.push(pixel_data);
@@ -583,6 +584,13 @@ impl Image {
     if image_height as int > 0 {
         for i in range(0, image_height){
 
+          if bits_per_pixel == 8 {
+            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB
+            let end_index: uint = start_index + (image_width as uint * 3); // Off by one as slice function doesn't include last index
+
+            let scanline = buffer.slice(start_index, end_index);
+            image_data_bytes.push_all(scanline);          
+          }
           if bits_per_pixel == 24 {
             let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB
             let end_index: uint = start_index + (image_width as uint * 3); // Off by one as slice function doesn't include last index
@@ -602,9 +610,9 @@ impl Image {
     }
 
 
-    // GRAYSCALE not properly implemented yet
+    // GRAYSCALE not properly implemented yet, saved as RGB
     if bits_per_pixel == 8 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: GRAYSCALE, data: image_data_bytes}    
+      Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
     }
     else if bits_per_pixel == 24 {
       Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
@@ -618,22 +626,132 @@ impl Image {
   }
 
   /* Writer Status: 
-   *  - Should default to BMPv4 for GRAYSCALE and RGB
-   *  - Default to BITMAPINFOHEADER for RGBA or BMPv5 or just BMPv3 with RGBA masks???
+   *  - 32-bit BMPv5 write correctly
+   *  - 24-bit BMPv4 write correctly
+   *  - 8-bit BMPv4 doesn't work at all.
    */
   pub fn write_bmp(&mut self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
-    let version = 4;  // For testing purposes
+    let mut version = 4;  // For testing purposes
     let signature = "BM";
 
     //self.color_type = GRAYSCALE;
 
     let padding = self.height * (self.width % 4);
 
+    match self.color_type {
+      RGBA => {version = 5},
+      _ => {version = 4}
+    }
 
+    // Save as BMP 5.x (espcially if RGBA)
+    if version == 5 {
+      match self.color_type {
+        RGBA => {
+          let filesize: u32 = (self.width * self.height * 4 + 124 + 14) as u32; 
+          let reserved1: u16 = 0 as u16;
+          let reserved2: u16 = 0 as u16;
+          let bitmap_offset: u32 = 138 as u32;
+          file.write(signature.as_bytes());
+          file.write_le_u32(filesize);
+          file.write_le_u16(reserved1);
+          file.write_le_u16(reserved2);
+          file.write_le_u32(bitmap_offset);
+
+          let header_size: u32 = 124 as u32;  // Size in bytes
+          let image_width: u32 = self.width as u32;    // In pixels
+          let image_height: u32 = self.height as u32;   // In pixels
+          let planes: u16 = 1 as u16;         // Number of color planes, in BMP this is always 1
+          let bits_per_pixel: u16 = 32 as u16;  // Number of bits per pixel
+          file.write_le_u32(header_size);
+          file.write_le_u32(image_width);
+          file.write_le_u32(image_height);
+          file.write_le_u16(planes);
+          file.write_le_u16(bits_per_pixel);
+
+          let compression_type: u32 = 3 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
+          let size_of_bitmap: u32 = (self.width * self.height * 4) as u32; // Size in bytes, 0 when uncompressed = 0
+          let horizontal_resolution: u32 = 2835 as u32;  // In pixels per meter
+          let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
+          let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
+          let colors_important: u32 = 0 as u32;   // 0 if all colors are important
+          file.write_le_u32(compression_type);
+          file.write_le_u32(size_of_bitmap);
+          file.write_le_u32(horizontal_resolution);
+          file.write_le_u32(vertical_resolution);
+          file.write_le_u32(colors_used);
+          file.write_le_u32(colors_important);        
+
+          let red_mask: u32 = 0xFF000000 as u32;
+          let green_mask: u32 = 0x00FF0000 as u32;
+          let blue_mask: u32 = 0x0000FF00 as u32;
+          let alpha_mask: u32 = 0x000000FF as u32;
+          let cs_type: u32 = 0x73524742 as u32;   // write sRGB in little endian -> BGRs
+          let endpoint_red_x: u32 = 0 as u32;
+          let endpoint_red_y: u32 = 0 as u32;
+          let endpoint_red_z: u32 = 0 as u32;
+          let endpoint_green_x: u32 = 0 as u32;
+          let endpoint_green_y: u32 = 0 as u32;
+          let endpoint_green_z: u32 = 0 as u32;
+          let endpoint_blue_x: u32 = 0 as u32;
+          let endpoint_blue_y: u32 = 0 as u32;
+          let endpoint_blue_z: u32 = 0 as u32;
+          let gamma_red: u32 = 0 as u32;
+          let gamma_green: u32 = 0 as u32;
+          let gamma_blue: u32 = 0 as u32;
+          file.write_le_u32(red_mask);
+          file.write_le_u32(green_mask);
+          file.write_le_u32(blue_mask);
+          file.write_le_u32(alpha_mask);
+          file.write_le_u32(cs_type);
+          file.write_le_u32(endpoint_red_x);
+          file.write_le_u32(endpoint_red_y);
+          file.write_le_u32(endpoint_red_z);
+          file.write_le_u32(endpoint_green_x);
+          file.write_le_u32(endpoint_green_y);
+          file.write_le_u32(endpoint_green_z);
+          file.write_le_u32(endpoint_blue_x);
+          file.write_le_u32(endpoint_blue_y);
+          file.write_le_u32(endpoint_blue_z);
+          file.write_le_u32(gamma_red);
+          file.write_le_u32(gamma_green);
+          file.write_le_u32(gamma_blue);
+
+          let intent: u32 = 2 as u32; // Rendering intent values not specified
+          let profile_data: u32 = 0 as u32;
+          let profile_size: u32 = 0 as u32;
+          let reserved: u32 = 0 as u32;
+          file.write_le_u32(intent);
+          file.write_le_u32(profile_data);
+          file.write_le_u32(profile_size);
+          file.write_le_u32(reserved);
+
+
+
+          for y in range(0, self.height) {
+            let bmp_y = self.height - 1 - y;
+            for x in range(0, self.width) {
+
+              let i = x * 4 + self.width * bmp_y * 4;
+    
+              // Write ABGR
+              file.write_u8(self.data[i+3]);
+              file.write_u8(self.data[i+2]);
+              file.write_u8(self.data[i+1]);
+              file.write_u8(self.data[i]);
+
+            }
+          }
+
+          true
+
+        },
+        _ => {false}
+      }
+    }
     // Save as BMP 4.x
-    if version == 4 {
+    else if version == 4 {
       match self.color_type {
         GRAYSCALE => {
           let filesize: u32 = ((self.width * self.height) + padding + 108 + 14) as u32; 
@@ -709,8 +827,7 @@ impl Image {
             for y in range(0, self.height) {
               let bmp_y = self.height - 1 - y;
               for x in range(0, self.width) {
-                let index = x + y * self.width;
-                println!("{},{} => {}",x, bmp_y, index);
+                let index = x + self.width * bmp_y;
                 file.write_u8(self.data[index]);
               }
 
@@ -1194,9 +1311,13 @@ fn main() {
 
     let mut image = Image::read_bmp(args[1]);
 
-    for y in range(0, image.height) {
+    /*for y in range(0, image.height) {
       for x in range(0, image.width) {
         match image.color_type {
+          GRAYSCALE => {
+            let i = x + image.width * y;
+            print!("({}) ", image.data[i]);
+          }
           RGB => {
             match image.get_pixel(x,y) {
               Some(p) => {
@@ -1209,24 +1330,13 @@ fn main() {
             let i = x * 4 + image.width * y  * 4;
             print!("({}, {}, {}, {}) ", image.data[i], image.data[i+1], image.data[i+2], image.data[i+3],);  
           }
-          _ => {fail!("Couldn't match read image color type");}
         }
       }
       print!("\n");
-    }
+    }*/
 
-    //image.write_bmp("image.bmp");
+    image.write_bmp("image.bmp");
 
-    // Read     --> Write         Checklist
-    // PPM      --> PPM           Works
-    // PPM      --> BMP 3.x       Works
-    // BMP 3.x  --> PPM           Works
-    // BMP 3.x  --> BMP 3.x       Works
-
-    // BMP 4.x  --> PPM           Works
-    // BMP 4.x  --> BMP 4.x       Works
-    // PPM      --> BMP 4.x       Works
-    // BMP 3.x  --> BMP 4.x       Works
   }
 
 }
