@@ -76,8 +76,6 @@ impl Image {
         }        
       }
     }
-
-
   }
 
   pub fn get_pixel(&self, x: uint, y: uint) -> Vec<u8>{
@@ -121,17 +119,42 @@ impl Image {
     }
   }
  
-  /*pub fn set_pixel(&mut self, x: uint, y: uint, color: RGB_Pixel) -> bool {
-    match self.get_offset(x, y) {
-      Some(offset) => {
-        self.data[offset] = color.r;
-        self.data[offset + 1] = color.g;
-        self.data[offset + 2] = color.b;
-        true
+  pub fn set_pixel(&mut self, x: uint, y: uint, mut color: Vec<u8>) -> bool {
+    match self.color_type {
+      GRAYSCALE => {
+        match self.get_offset(x, y) {
+          Some(offset) => {
+            self.data[offset] = color.pop().unwrap();
+            true
+          },
+          None => false
+        }           
       },
-      None => false
+      RGB => {
+        match self.get_offset(x, y) {
+          Some(offset) => {
+            self.data[  offset + 2  ] = color.pop().unwrap();
+            self.data[  offset + 1  ] = color.pop().unwrap();
+            self.data[  offset      ] = color.pop().unwrap();
+            true
+          },
+          None => false
+        }        
+      },
+      RGBA => {
+        match self.get_offset(x, y) {
+          Some(offset) => {
+            self.data[  offset + 3  ] = color.pop().unwrap();
+            self.data[  offset + 2  ] = color.pop().unwrap();
+            self.data[  offset + 1  ] = color.pop().unwrap();
+            self.data[  offset      ] = color.pop().unwrap();
+            true
+          },
+          None => false
+        }         
+      }
     }
-  }*/
+  }
 }
 
 // PPM Image format
@@ -1007,21 +1030,6 @@ impl Image {
                 file.write_u8(green).unwrap();
                 file.write_u8(red).unwrap();
 
-                // Needs to be changed or removed
-                /*match self.get_pixel(x,bmp_y) {
-
-                  Some(pixel) => {
-                    let blue = pixel.b;
-                    let green = pixel.g;
-                    let red = pixel.r;
-
-                    file.write_u8(blue);
-                    file.write_u8(green);
-                    file.write_u8(red);
-                  },
-                  None => {fail!("Error writing image as BMP file")}
-                }*/
-
               }
 
               // Padding based on image width, scanlines must be multiple of 4
@@ -1135,6 +1143,7 @@ impl Image {
 
 // Image processing traits and functions
 // Commented out until pixel functions are updated
+
 /*
 trait PointProcessor {
   fn negative(&mut self);
@@ -1177,24 +1186,26 @@ impl PointProcessor for Image {
     // let start = time::precise_time_ns();
     for y in range(0, self.height){
       for x in range(0, self.width){
-        match self.get_pixel(x,y){
-          Some(pixel) => {
-            let mut red = pixel.r as int + bias;
-            let mut green = pixel.g as int + bias;
-            let mut blue = pixel.b as int + bias;
 
-            if red > 255 {red = 255;}
-            if green > 255 {green = 255;}
-            if blue > 255 {blue = 255;}
+        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+        let b  = pixel_data.pop().unwrap();
+        let g  = pixel_data.pop().unwrap();
+        let r  = pixel_data.pop().unwrap();
 
-            if red < 0 {red = 0;}
-            if green < 0 {green = 0;}
-            if blue < 0 {blue = 0;}
-            
-            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
-          },
-          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
-        }
+        let mut red   = r as int + bias;
+        let mut green = g as int + bias;
+        let mut blue  = b as int + bias;
+
+        if red > 255 {red = 255;}
+        if green > 255 {green = 255;}
+        if blue > 255 {blue = 255;}
+
+        if red < 0 {red = 0;}
+        if green < 0 {green = 0;}
+        if blue < 0 {blue = 0;}
+        
+        self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+
       }
     }
     // let end = time::precise_time_ns();
@@ -1206,16 +1217,18 @@ impl PointProcessor for Image {
 
     for y in range(0, self.height){
       for x in range(0, self.width){
-        match self.get_pixel(x,y){
-          Some(pixel) => {
-            let mut red     = pixel.r as f32;
-            let mut green   = pixel.g as f32;
-            let mut blue    = pixel.b as f32;
-            let luminance: f32 = (0.2126 * red  + 0.7152 * green  + 0.0722 * blue);
-            total_luminance += luminance;
-          },
-          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
-        }
+
+        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+        let b  = pixel_data.pop().unwrap();
+        let g  = pixel_data.pop().unwrap();
+        let r  = pixel_data.pop().unwrap();
+
+        let mut red   = r as f32;
+        let mut green = g as f32;
+        let mut blue  = b as f32;
+
+        let luminance: f32 = (0.2126 * red  + 0.7152 * green  + 0.0722 * blue);
+        total_luminance += luminance;
       }
     }
 
@@ -1223,68 +1236,69 @@ impl PointProcessor for Image {
 
     for y in range(0, self.height){
       for x in range(0, self.width){
-        match self.get_pixel(x,y){
-          Some(pixel) => {
-            let mut red     = pixel.r as int;
-            let mut green   = pixel.g as int;
-            let mut blue    = pixel.b as int;
 
-            let dRed: f32 = red as f32 - mean_luminance;
-            let dGreen: f32 = green as f32 - mean_luminance;
-            let dBlue: f32 = blue as f32 - mean_luminance;
+        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+        let b  = pixel_data.pop().unwrap();
+        let g  = pixel_data.pop().unwrap();
+        let r  = pixel_data.pop().unwrap();
 
-            red     = (red as f32 - dRed * (1. - gain)) as int;
-            green   = (green as f32 - dGreen * (1. - gain)) as int;
-            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+        let mut red     = r as int;
+        let mut green   = g as int;
+        let mut blue    = b as int;
 
-            if red > 255 {red = 255;}
-            if green > 255 {green = 255;}
-            if blue > 255 {blue = 255;}
+        let dRed: f32 = red as f32 - mean_luminance;
+        let dGreen: f32 = green as f32 - mean_luminance;
+        let dBlue: f32 = blue as f32 - mean_luminance;
 
-            if red < 0 {red = 0;}
-            if green < 0 {green = 0;}
-            if blue < 0 {blue = 0;}
-            
-            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+        red     = (red as f32 - dRed * (1. - gain)) as int;
+        green   = (green as f32 - dGreen * (1. - gain)) as int;
+        blue    = (blue as f32 - dBlue * (1. - gain)) as int;
 
-          },
-          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
-        }
+        if red > 255 {red = 255;}
+        if green > 255 {green = 255;}
+        if blue > 255 {blue = 255;}
+
+        if red < 0 {red = 0;}
+        if green < 0 {green = 0;}
+        if blue < 0 {blue = 0;}
+        
+        self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+
       }
     }
   }
   fn saturate(&mut self, gain: f32) {
     for y in range(0, self.height){
       for x in range(0, self.width){
-        match self.get_pixel(x,y){
-          Some(pixel) => {
 
-            let mut red     = pixel.r as int;
-            let mut green   = pixel.g as int;
-            let mut blue    = pixel.b as int;
+        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+        let b  = pixel_data.pop().unwrap();
+        let g  = pixel_data.pop().unwrap();
+        let r  = pixel_data.pop().unwrap();
 
-            let luminance: f32 = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32);
-            let dRed: f32 = red as f32 - luminance;
-            let dGreen: f32 = green as f32 - luminance;
-            let dBlue: f32 = blue as f32 - luminance;
+        let mut red     = r as int;
+        let mut green   = g as int;
+        let mut blue    = b as int;
 
-            red     = (red as f32 - dRed * (1. - gain)) as int;
-            green   = (green as f32 - dGreen * (1. - gain)) as int;
-            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+        let luminance: f32 = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32);
+        let dRed: f32 = red as f32 - luminance;
+        let dGreen: f32 = green as f32 - luminance;
+        let dBlue: f32 = blue as f32 - luminance;
 
-            if red > 255 {red = 255;}
-            if green > 255 {green = 255;}
-            if blue > 255 {blue = 255;}
+        red     = (red as f32 - dRed * (1. - gain)) as int;
+        green   = (green as f32 - dGreen * (1. - gain)) as int;
+        blue    = (blue as f32 - dBlue * (1. - gain)) as int;
 
-            if red < 0 {red = 0;}
-            if green < 0 {green = 0;}
-            if blue < 0 {blue = 0;}
-            
-            self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
-         
-          },
-          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
-        }
+        if red > 255 {red = 255;}
+        if green > 255 {green = 255;}
+        if blue > 255 {blue = 255;}
+
+        if red < 0 {red = 0;}
+        if green < 0 {green = 0;}
+        if blue < 0 {blue = 0;}
+        
+        self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+
       }
     }
   }
@@ -1292,28 +1306,31 @@ impl PointProcessor for Image {
     // NOTE: not optimized for format encoding
     for y in range(0, self.height){
       for x in range(0, self.width){
-        match self.get_pixel(x,y){
-          Some(pixel) => {
-            let mut red     = pixel.r as int;
-            let mut green   = pixel.g as int;
-            let mut blue    = pixel.b as int;
 
-            let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
-            if luminance < 0 {
-              luminance = 0;
-            }
-            if luminance > 255 {
-              luminance = 255;
-            }
-            
-            self.set_pixel(x,y, RGB_Pixel{r: luminance as u8, g: luminance as u8, b: luminance as u8});
-          },
-          None  => {fail!("Error retrieving pixel ({}, {})", x, y)}
+        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+        let b  = pixel_data.pop().unwrap();
+        let g  = pixel_data.pop().unwrap();
+        let r  = pixel_data.pop().unwrap();
+
+        let mut red     = r as int;
+        let mut green   = g as int;
+        let mut blue    = b as int;
+
+        let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
+        if luminance < 0 {
+          luminance = 0;
         }
+        if luminance > 255 {
+          luminance = 255;
+        }
+        
+        self.set_pixel(x,y, RGB_Pixel{r: luminance as u8, g: luminance as u8, b: luminance as u8});
+
       }
     }
   }
 }
+*/
 
 trait ConvolutionFilter {
   fn blur(&mut self);
@@ -1344,14 +1361,15 @@ impl ConvolutionFilter for Image {
             if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
 
               let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
-              match self.get_pixel(kx as uint, ky as uint) {
-                Some(pixel) => {
-                  red_sum += (pixel.r as int * kernel_value);
-                  green_sum += (pixel.g as int * kernel_value);
-                  blue_sum += (pixel.b as int * kernel_value);
-                },
-                None  => {fail!("Error retrieving kernel pixel ({}, {}) at image pixel ({}, {})", kx, ky, x, y)}
-              }
+
+              let mut pixel_data: Vec<u8> = self.get_pixel(kx as uint , ky as uint);
+              let b  = pixel_data.pop().unwrap();
+              let g  = pixel_data.pop().unwrap();
+              let r  = pixel_data.pop().unwrap();
+
+              red_sum   += (r as int * kernel_value);
+              green_sum += (g as int * kernel_value);
+              blue_sum  += (b as int * kernel_value);              
 
             }  
 
@@ -1370,7 +1388,8 @@ impl ConvolutionFilter for Image {
         if green_sum < 0 {green_sum = 0;}
         if blue_sum < 0 {blue_sum = 0;}
 
-        self.set_pixel(x as uint,y as uint, RGB_Pixel{r: red_sum as u8, g: green_sum as u8, b: blue_sum as u8});
+        let pixel_data: Vec<u8> = vec!(red_sum as u8, green_sum as u8, blue_sum as u8);
+        self.set_pixel(x as uint,y as uint, pixel_data);
         
       }
     }
@@ -1380,7 +1399,8 @@ impl ConvolutionFilter for Image {
     // println!("Time of brute force algorithm: {}", time);
   }
 }
-*/
+
+
 
 fn main() {
   let args = os::args();
@@ -1416,6 +1436,7 @@ fn main() {
       print!("\n");
     }*/
 
+    image.blur();
     image.write_bmp("image.bmp");
 
   }
