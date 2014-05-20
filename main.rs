@@ -1144,7 +1144,7 @@ impl Image {
 // Image processing traits and functions
 // Commented out until pixel functions are updated
 
-/*
+
 trait PointProcessor {
   fn negative(&mut self);
   fn brighten(&mut self, bias: int);
@@ -1204,7 +1204,8 @@ impl PointProcessor for Image {
         if green < 0 {green = 0;}
         if blue < 0 {blue = 0;}
         
-        self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+        let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
+        self.set_pixel(x,y, pixel_data);
 
       }
     }
@@ -1262,7 +1263,8 @@ impl PointProcessor for Image {
         if green < 0 {green = 0;}
         if blue < 0 {blue = 0;}
         
-        self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+        let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
+        self.set_pixel(x,y, pixel_data);
 
       }
     }
@@ -1297,7 +1299,8 @@ impl PointProcessor for Image {
         if green < 0 {green = 0;}
         if blue < 0 {blue = 0;}
         
-        self.set_pixel(x,y, RGB_Pixel{r: red as u8, g: green as u8, b: blue as u8});
+        let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
+        self.set_pixel(x,y, pixel_data);
 
       }
     }
@@ -1324,13 +1327,14 @@ impl PointProcessor for Image {
           luminance = 255;
         }
         
-        self.set_pixel(x,y, RGB_Pixel{r: luminance as u8, g: luminance as u8, b: luminance as u8});
+        let pixel_data: Vec<u8> = vec!(luminance as u8, luminance as u8, luminance as u8);
+        self.set_pixel(x,y, pixel_data);
 
       }
     }
   }
 }
-*/
+
 
 trait ConvolutionFilter {
   fn blur(&mut self);
@@ -1436,7 +1440,7 @@ fn main() {
       print!("\n");
     }*/
 
-    image.blur();
+    image.grayscale();
     image.write_bmp("image.bmp");
 
   }
