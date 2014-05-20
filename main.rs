@@ -154,6 +154,40 @@ impl Image {
       }
     }
   }
+
+  pub fn convert_to_RGB8(&mut self) -> bool {
+    match self.color_type {
+      GRAYSCALE => {
+        let mut new_pixel_array: ~[u8] = ~[];
+        for i in range(0, self.data.len()) {
+          let lum = self.data[i];
+          new_pixel_array.push(lum);
+          new_pixel_array.push(lum);
+          new_pixel_array.push(lum);
+        }
+        self.data = new_pixel_array;
+        self.color_type = RGB8;
+        true
+      },
+      RGB8      => {
+        println!("Image already RGB8");
+        return true
+      },
+      RGBA8     => {
+        let mut new_pixel_array: ~[u8] = ~[];
+        for i in range(0, self.data.len()) {
+          if i % 4 ==3 {
+            continue;
+          }
+          let component = self.data[i];
+          new_pixel_array.push(component);
+        }
+        self.data = new_pixel_array;
+        self.color_type = RGB8;
+        true
+      }
+    }
+  }
 }
 
 // PPM Image format
@@ -722,9 +756,6 @@ impl Image {
     let mut file = File::create(&path);
     let mut version;
     let signature = "BM";
-
-    //self.color_type = GRAYSCALE;
-
 
     let padding = self.height * (self.width % 4);
 
@@ -1418,9 +1449,10 @@ fn main() {
 
     let mut image = Image::read_bmp(args[1]);
 
-
+    image.convert_to_RGB8();
     
-    /*for y in range(0, image.height) {
+    /*
+    for y in range(0, image.height) {
       for x in range(0, image.width) {
         match image.color_type {
           GRAYSCALE => {
@@ -1438,7 +1470,8 @@ fn main() {
         }
       }
       print!("\n");
-    }*/
+    }
+    */
 
     image.write_bmp("image.bmp");
 
