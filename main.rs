@@ -155,6 +155,72 @@ impl Image {
     }
   }
 
+  pub fn convert_to_GRAYSCALE(&mut self) -> bool {
+    match self.color_type {
+      GRAYSCALE => {
+        println!("Image already GRAYSCALE");
+        return true
+      },
+      RGB8      => {
+        let mut new_pixel_array: ~[u8] = ~[];
+        for y in range(0, self.height){
+          for x in range(0, self.width){
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            let b  = pixel_data.pop().unwrap();
+            let g  = pixel_data.pop().unwrap();
+            let r  = pixel_data.pop().unwrap();
+
+            let red     = r as int;
+            let green   = g as int;
+            let blue    = b as int;
+
+            let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
+            if luminance < 0 {
+              luminance = 0;
+            }
+            if luminance > 255 {
+              luminance = 255;
+            }
+
+            new_pixel_array.push(luminance as u8);
+          }
+        }
+        self.data = new_pixel_array;
+        self.color_type = GRAYSCALE;
+        true
+      },
+      RGBA8     => {
+        let mut new_pixel_array: ~[u8] = ~[];
+        for y in range(0, self.height){
+          for x in range(0, self.width){
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            let a  = pixel_data.pop().unwrap();
+            let b  = pixel_data.pop().unwrap();
+            let g  = pixel_data.pop().unwrap();
+            let r  = pixel_data.pop().unwrap();
+
+            let red     = r as int;
+            let green   = g as int;
+            let blue    = b as int;
+
+            let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
+            if luminance < 0 {
+              luminance = 0;
+            }
+            if luminance > 255 {
+              luminance = 255;
+            }
+
+            new_pixel_array.push(luminance as u8);
+          }
+        }
+        self.data = new_pixel_array;
+        self.color_type = GRAYSCALE;
+        true
+      }
+    }
+  } 
+
   pub fn convert_to_RGB8(&mut self) -> bool {
     match self.color_type {
       GRAYSCALE => {
@@ -188,6 +254,47 @@ impl Image {
       }
     }
   }
+
+  pub fn convert_to_RGBA8(&mut self) -> bool {
+    match self.color_type {
+      GRAYSCALE => {
+        let mut new_pixel_array: ~[u8] = ~[];
+        for i in range(0, self.data.len()) {
+          let lum = self.data[i];
+          new_pixel_array.push(lum);
+          new_pixel_array.push(lum);
+          new_pixel_array.push(lum);
+          new_pixel_array.push(255 as u8);
+        }
+        self.data = new_pixel_array;
+        self.color_type = RGBA8;
+        true
+      },
+      RGB8      => {
+        let mut new_pixel_array: ~[u8] = ~[];
+        for y in range(0, self.height) {
+          for x in range(0, self.width) {
+            let mut pixel: Vec<u8> = self.get_pixel(x,y);
+            let b = pixel.pop().unwrap();
+            let g = pixel.pop().unwrap();
+            let r = pixel.pop().unwrap();
+
+            new_pixel_array.push(r);
+            new_pixel_array.push(g);
+            new_pixel_array.push(b);
+            new_pixel_array.push(255 as u8);
+          }
+        }
+        self.data = new_pixel_array;
+        self.color_type = RGBA8;
+        true
+      },
+      RGBA8     => {
+        println!("Image already RGBA8");
+        return true
+      }
+    }
+  }  
 }
 
 // PPM Image format
@@ -1185,7 +1292,6 @@ trait PointProcessor {
   fn brighten(&mut self, bias: int);
   fn contrast(&mut self, gain: f32);
   fn saturate(&mut self, gain: f32);
-  fn grayscale(&mut self);
 }
 impl PointProcessor for Image {
   fn negative(&mut self) {
@@ -1340,34 +1446,6 @@ impl PointProcessor for Image {
       }
     }
   }
-  fn grayscale(&mut self) {
-    // NOTE: not optimized for format encoding
-    for y in range(0, self.height){
-      for x in range(0, self.width){
-
-        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
-        let b  = pixel_data.pop().unwrap();
-        let g  = pixel_data.pop().unwrap();
-        let r  = pixel_data.pop().unwrap();
-
-        let red     = r as int;
-        let green   = g as int;
-        let blue    = b as int;
-
-        let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
-        if luminance < 0 {
-          luminance = 0;
-        }
-        if luminance > 255 {
-          luminance = 255;
-        }
-        
-        let pixel_data: Vec<u8> = vec!(luminance as u8, luminance as u8, luminance as u8);
-        self.set_pixel(x,y, pixel_data);
-
-      }
-    }
-  }
 }
 
 trait ConvolutionFilter {
@@ -1449,10 +1527,10 @@ fn main() {
 
     let mut image = Image::read_bmp(args[1]);
 
-    image.convert_to_RGB8();
+    image.convert_to_GRAYSCALE();
     
-    /*
-    for y in range(0, image.height) {
+    
+    /*for y in range(0, image.height) {
       for x in range(0, image.width) {
         match image.color_type {
           GRAYSCALE => {
@@ -1470,8 +1548,8 @@ fn main() {
         }
       }
       print!("\n");
-    }
-    */
+    }*/
+    
 
     image.write_bmp("image.bmp");
 
