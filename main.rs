@@ -9,8 +9,8 @@ use std::uint;
 
 pub enum ColorType {
   GRAYSCALE = 8,  // Not properly implemented
-  RGB = 24,
-  RGBA = 32,
+  RGB8 = 24,
+  RGBA8 = 32,
 }
 pub struct Image {
   width: uint,
@@ -23,18 +23,18 @@ impl Image {
     match color_type {
       8   => {
         let size = width * height;
-        let mut buffer = from_elem(size, 0u8);
+        let buffer = from_elem(size, 0u8);
         Image{width: width, height: height, color_type: GRAYSCALE, data: buffer}        
       },
       24  => {
         let size = 3 * width * height;
-        let mut buffer = from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: RGB, data: buffer}        
+        let buffer = from_elem(size, 0u8);
+        Image{width: width, height: height, color_type: RGB8, data: buffer}        
       },
       32  => {
         let size = 4 * width * height;
-        let mut buffer = from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: RGBA, data: buffer}            
+        let buffer = from_elem(size, 0u8);
+        Image{width: width, height: height, color_type: RGBA8, data: buffer}            
       },
       _ => {fail!("Invalid color_type. Cannot create image.")}
     }
@@ -43,22 +43,22 @@ impl Image {
   fn buffer_size(&self) -> uint {
     match self.color_type {
       GRAYSCALE   => {  self.width * self.height    },
-      RGB         => {  self.width * self.height * 3},
-      RGBA        => {  self.width * self.height * 4}
+      RGB8         => {  self.width * self.height * 3},
+      RGBA8        => {  self.width * self.height * 4}
     }
   }
  
   fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
     match self.color_type {
       GRAYSCALE => {
-        let offset = (x + self.width * y);
+        let offset = x + self.width * y;
         if offset < self.buffer_size() {
           Some(offset)
         }else{
           None
         }        
       },
-      RGB => {
+      RGB8 => {
         let offset = (x + self.width * y) * 3;
         if offset < self.buffer_size() {
           Some(offset)
@@ -66,7 +66,7 @@ impl Image {
           None
         }
       },
-      RGBA => {
+      RGBA8 => {
         let offset = (x + self.width * y) * 4;
         if offset < self.buffer_size() {
           Some(offset)
@@ -85,10 +85,10 @@ impl Image {
             let pixel_data: Vec<u8> = vec!(self.data[offset]);
             pixel_data
           },
-          None => {fail!("Couldn't get RGB pixel")}
+          None => {fail!("Couldn't get RGB8 pixel")}
         }        
       },
-      RGB => {
+      RGB8 => {
         match self.get_offset(x, y) {
           Some(offset) => {
             let pixel_data: Vec<u8> = vec!(
@@ -98,10 +98,10 @@ impl Image {
               );
             pixel_data
           },
-          None => {fail!("Couldn't get RGB pixel")}
+          None => {fail!("Couldn't get RGB8 pixel")}
         }
       },
-      RGBA => {
+      RGBA8 => {
         match self.get_offset(x, y) {
           Some(offset) => {
             let pixel_data: Vec<u8> = vec!(
@@ -112,7 +112,7 @@ impl Image {
               );
             pixel_data
           },
-          None => {fail!("Couldn't get RGB pixel")}
+          None => {fail!("Couldn't get RGB8 pixel")}
         }        
       }
     }
@@ -129,7 +129,7 @@ impl Image {
           None => false
         }           
       },
-      RGB => {
+      RGB8 => {
         match self.get_offset(x, y) {
           Some(offset) => {
             self.data[  offset + 2  ] = color.pop().unwrap();
@@ -140,7 +140,7 @@ impl Image {
           None => false
         }        
       },
-      RGBA => {
+      RGBA8 => {
         match self.get_offset(x, y) {
           Some(offset) => {
             self.data[  offset + 3  ] = color.pop().unwrap();
@@ -272,7 +272,7 @@ impl Image {  // Not complete, and may never be
       None    => {0 as uint}
     };
     // Only testing color images
-    Image{width: width, height: height, color_type: RGB, data: image_data_bytes}
+    Image{width: width, height: height, color_type: RGB8, data: image_data_bytes}
   }  
   fn write_ppm(&self, filename: &str) -> bool {
     let path = Path::new(filename);
@@ -287,11 +287,11 @@ impl Image {  // Not complete, and may never be
 // BMP Image format
 impl Image {
   /* NOTES:
-   * BMP pixels stored as BGR, not RGB
+   * BMP pixels stored as BGR, not RGB8
    * If height is positive, scanlines stored BOTTOM UP --> store pixels starting from bottom row when writing
    * If height is negative, scanliens stored TOP DOWN  --> No flip required to match Image struct pixel array orientation
    * Image_width % 4 = # of bytes for padding per scanline
-   * Only v4 an v5 can produce RGBA images
+   * Only v4 an v5 can produce RGBA8 images
    */
 
   /* Reader Status:
@@ -309,7 +309,7 @@ impl Image {
     let mut image_width: u32 = 0 as u32;
     let mut image_height: u32 = 0 as u32;
     let mut planes: u16 = 0 as u16;
-    let mut bits_per_pixel: u16 = 0 as u16;   // 8 = Grayscale, 24 = RGB, 32 = RGBA
+    let mut bits_per_pixel: u16 = 0 as u16;   // 8 = Grayscale, 24 = RGB8, 32 = RGBA8
     let mut compression_type: u32 = 0 as u32;
     let mut size_of_bitmap: u32 = 0 as u32;   
 
@@ -408,7 +408,7 @@ impl Image {
           Err(e) => (println!("Error reading image height: {}", e))
         }
 
-        let mut remainder = offset as int - 14 - 24; // offset - fileheader size - read bytes
+        let remainder = offset as int - 14 - 24; // offset - fileheader size - read bytes
 
         // Debug header data
         /*println!("
@@ -417,7 +417,7 @@ impl Image {
           Header size: {}\t(40 = BMP 3.x, 108 = BMP 4.x, 124 = BMP 5.x)
           Dimensions: {}px x {}px
           Number of color planes: {}\t(Should always be 1 in BMPs)
-          Bits per pixel: {}\t(8 = Grayscale, 24 = RGB, 32 = RGBA)
+          Bits per pixel: {}\t(8 = Grayscale, 24 = RGB8, 32 = RGBA8)
           Compression type: {}
           Size of bitmap (in bytes): {}\t(May be 0 if uncompressed)
           
@@ -446,15 +446,15 @@ impl Image {
         if compression_type as int == 0 {
           // GRAYSCALE
           if bits_per_pixel as int == 8 {
-            println!("GRAYSCALE Image (will be saved as RGB)");
+            println!("GRAYSCALE Image");
             for y in range(0, image_height) {
               for x in range(0, image_width) {
                 match image.read_byte() {
                   Ok(pixel_data) => {
-                    // Saving as RGB
+                    // Saving as RGB8
                     buffer.push(pixel_data);
-                    buffer.push(pixel_data);
-                    buffer.push(pixel_data);
+                    // buffer.push(pixel_data);
+                    // buffer.push(pixel_data);
                   },
                   Err(e)    => {fail!("Error reading BMP pixel")}
                 }
@@ -531,9 +531,9 @@ impl Image {
             }
           }
           
-          // RGB    
+          // RGB8    
           if bits_per_pixel as int == 24 {
-            println!("RGB Image");
+            println!("RGB8 Image");
             for y in range(0, image_height) {
               for x in range(0, image_width) {
                 match image.read_exact(3) {
@@ -632,9 +632,9 @@ impl Image {
         // BI_BITFEILDS means image is uncompressed and components values are stored according to component masks in header
         // - Should be able to identify color channels through masks. Is it common to store masks and data differently than ABGR?
         if compression_type as int == 3 { 
-          // RGBA
+          // RGBA8
           if bits_per_pixel as int == 32 {
-            println!("RGBA Image");
+            println!("RGBA8 Image");
             for y in range(0, image_height) {
               for x in range(0, image_width) {
                 match image.read_exact(4) {
@@ -672,21 +672,21 @@ impl Image {
         for i in range(0, image_height){
 
           if bits_per_pixel == 8 {
-            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB
-            let end_index: uint = start_index + (image_width as uint * 3); // Off by one as slice function doesn't include last index
+            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint ;  // 3 because RGB8
+            let end_index: uint = start_index + image_width as uint; // Off by one as slice function doesn't include last index
 
             let scanline = buffer.slice(start_index, end_index);
             image_data_bytes.push_all(scanline);          
           }
           if bits_per_pixel == 24 {
-            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB
+            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 3;  // 3 because RGB8
             let end_index: uint = start_index + (image_width as uint * 3); // Off by one as slice function doesn't include last index
 
             let scanline = buffer.slice(start_index, end_index);
             image_data_bytes.push_all(scanline);
           }
           if bits_per_pixel == 32 {
-            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 4;  // 4 because RGBA
+            let start_index: uint = (image_height as uint - i as uint - 1) * image_width as uint * 4;  // 4 because RGBA8
             let end_index: uint = start_index + (image_width as uint * 4); // Off by one as slice function doesn't include last index
 
             let scanline = buffer.slice(start_index, end_index);
@@ -697,15 +697,15 @@ impl Image {
     }
 
 
-    // GRAYSCALE not properly implemented yet, saved as RGB
+    // GRAYSCALE not properly implemented yet, saved as RGB8
     if bits_per_pixel == 8 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
+      Image{width: image_width as uint, height: image_height as uint, color_type: GRAYSCALE, data: image_data_bytes}    
     }
     else if bits_per_pixel == 24 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: RGB, data: image_data_bytes}    
+      Image{width: image_width as uint, height: image_height as uint, color_type: RGB8, data: image_data_bytes}    
     }
     else if bits_per_pixel == 32 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: RGBA, data: image_data_bytes}    
+      Image{width: image_width as uint, height: image_height as uint, color_type: RGBA8, data: image_data_bytes}    
     }
     else {
       fail!("Error writing image as valid colorspace")
@@ -720,7 +720,7 @@ impl Image {
   pub fn write_bmp(&mut self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
-    let mut version = 4;  // For testing purposes
+    let mut version;
     let signature = "BM";
 
     //self.color_type = GRAYSCALE;
@@ -729,14 +729,14 @@ impl Image {
     let padding = self.height * (self.width % 4);
 
     match self.color_type {
-      RGBA => {version = 5},
+      RGBA8 => {version = 5},
       _ => {version = 4}
     }
 
-    // Save as BMP 5.x (espcially if RGBA)
+    // Save as BMP 5.x (espcially if RGBA8)
     if version == 5 {
       match self.color_type {
-        RGBA => {
+        RGBA8 => {
           let filesize: u32 = (self.width * self.height * 4 + 124 + 14) as u32; 
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
@@ -846,7 +846,7 @@ impl Image {
           let filesize: u32 = ((self.width * self.height) + padding + 108 + 14) as u32; 
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
-          let bitmap_offset: u32 = 122 as u32;
+          let bitmap_offset: u32 = (122 + 1024) as u32; // Add size of color palette
           file.write(signature.as_bytes()).unwrap();
           file.write_le_u32(filesize).unwrap();
           file.write_le_u16(reserved1).unwrap();
@@ -912,6 +912,14 @@ impl Image {
           file.write_le_u32(gamma_green).unwrap();
           file.write_le_u32(gamma_blue).unwrap();
 
+          // GRAYSCALE PALETTE
+          for i in range(0, 256) {
+            file.write_u8(i as u8).unwrap();
+            file.write_u8(i as u8).unwrap();
+            file.write_u8(i as u8).unwrap();
+            file.write_u8(0).unwrap();
+          }
+
           if compression_type == 0 {
             for y in range(0, self.height) {
               let bmp_y = self.height - 1 - y;
@@ -945,7 +953,7 @@ impl Image {
         }
 
 
-        RGB => {
+        RGB8 => {
           let filesize: u32 = ((self.width * self.height * 3) + padding + 108 + 14) as u32; 
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
@@ -1140,7 +1148,7 @@ impl Image {
   }
 }
 
-// Image processing traits and functions (Only for RGB images)
+// Image processing traits and functions (Only for RGB8 images)
 trait PointProcessor {
   fn negative(&mut self);
   fn brighten(&mut self, bias: int);
@@ -1220,11 +1228,11 @@ impl PointProcessor for Image {
         let g  = pixel_data.pop().unwrap();
         let r  = pixel_data.pop().unwrap();
 
-        let mut red   = r as f32;
-        let mut green = g as f32;
-        let mut blue  = b as f32;
+        let red   = r as f32;
+        let green = g as f32;
+        let blue  = b as f32;
 
-        let luminance: f32 = (0.2126 * red  + 0.7152 * green  + 0.0722 * blue);
+        let luminance: f32 = 0.2126 * red  + 0.7152 * green  + 0.0722 * blue;
         total_luminance += luminance;
       }
     }
@@ -1278,7 +1286,7 @@ impl PointProcessor for Image {
         let mut green   = g as int;
         let mut blue    = b as int;
 
-        let luminance: f32 = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32);
+        let luminance: f32 = 0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32;
         let dRed: f32 = red as f32 - luminance;
         let dGreen: f32 = green as f32 - luminance;
         let dBlue: f32 = blue as f32 - luminance;
@@ -1311,9 +1319,9 @@ impl PointProcessor for Image {
         let g  = pixel_data.pop().unwrap();
         let r  = pixel_data.pop().unwrap();
 
-        let mut red     = r as int;
-        let mut green   = g as int;
-        let mut blue    = b as int;
+        let red     = r as int;
+        let green   = g as int;
+        let blue    = b as int;
 
         let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
         if luminance < 0 {
@@ -1341,8 +1349,8 @@ impl ConvolutionFilter for Image {
   
     let kernel = [[1, 1, 1], [1, 1, 1], [1, 1, 1]];
     let kernel_sum = 9;
-    let mut kernel_center_x: uint = 3/2;
-    let mut kernel_center_y: uint = 3/2;
+    let kernel_center_x: uint = 3/2;
+    let kernel_center_y: uint = 3/2;
 
     for x in range(0, self.width){
       for y in range(0, self.height){
@@ -1366,9 +1374,9 @@ impl ConvolutionFilter for Image {
               let g  = pixel_data.pop().unwrap();
               let r  = pixel_data.pop().unwrap();
 
-              red_sum   += (r as int * kernel_value);
-              green_sum += (g as int * kernel_value);
-              blue_sum  += (b as int * kernel_value);              
+              red_sum   += r as int * kernel_value;
+              green_sum += g as int * kernel_value;
+              blue_sum  += b as int * kernel_value;              
 
             }  
 
@@ -1411,6 +1419,7 @@ fn main() {
     let mut image = Image::read_bmp(args[1]);
 
 
+    
     /*for y in range(0, image.height) {
       for x in range(0, image.width) {
         match image.color_type {
@@ -1418,24 +1427,19 @@ fn main() {
             let i = x + image.width * y;
             print!("({}) ", image.data[i]);
           }
-          RGB => {
-            match image.get_pixel(x,y) {
-              Some(p) => {
-                print!("({}, {}, {}) ", p.r, p.g, p.b);  
-              },
-              None  =>{fail!("Couln't read pixel")}
-            }
+          RGB8 => {
+            let pixel = image.get_pixel(x,y);
+            print!("{} ", pixel);  
           },
-          RGBA => {
-            let i = x * 4 + image.width * y  * 4;
-            print!("({}, {}, {}, {}) ", image.data[i], image.data[i+1], image.data[i+2], image.data[i+3],);  
+          RGBA8 => {
+            let pixel = image.get_pixel(x,y);
+            print!("{} ", pixel);  
           }
         }
       }
       print!("\n");
     }*/
 
-    image.grayscale();
     image.write_bmp("image.bmp");
 
   }
