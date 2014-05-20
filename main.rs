@@ -8,7 +8,7 @@ use std::str;
 use std::uint;
 
 pub enum ColorType {
-  GRAYSCALE = 8,  // Not properly implemented
+  GRAYSCALE8 = 8,
   RGB8 = 24,
   RGBA8 = 32,
 }
@@ -24,7 +24,7 @@ impl Image {
       8   => {
         let size = width * height;
         let buffer = from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: GRAYSCALE, data: buffer}        
+        Image{width: width, height: height, color_type: GRAYSCALE8, data: buffer}        
       },
       24  => {
         let size = 3 * width * height;
@@ -42,7 +42,7 @@ impl Image {
 
   fn buffer_size(&self) -> uint {
     match self.color_type {
-      GRAYSCALE   => {  self.width * self.height    },
+      GRAYSCALE8   => {  self.width * self.height    },
       RGB8         => {  self.width * self.height * 3},
       RGBA8        => {  self.width * self.height * 4}
     }
@@ -50,7 +50,7 @@ impl Image {
  
   fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
     match self.color_type {
-      GRAYSCALE => {
+      GRAYSCALE8 => {
         let offset = x + self.width * y;
         if offset < self.buffer_size() {
           Some(offset)
@@ -79,7 +79,7 @@ impl Image {
 
   pub fn get_pixel(&self, x: uint, y: uint) -> Vec<u8>{
     match self.color_type {
-      GRAYSCALE => {
+      GRAYSCALE8 => {
         match self.get_offset(x, y) {
           Some(offset) => {
             let pixel_data: Vec<u8> = vec!(self.data[offset]);
@@ -120,7 +120,7 @@ impl Image {
  
   pub fn set_pixel(&mut self, x: uint, y: uint, mut color: Vec<u8>) -> bool {
     match self.color_type {
-      GRAYSCALE => {
+      GRAYSCALE8 => {
         match self.get_offset(x, y) {
           Some(offset) => {
             self.data[offset] = color.pop().unwrap();
@@ -157,8 +157,8 @@ impl Image {
 
   pub fn convert_to_GRAYSCALE(&mut self) -> bool {
     match self.color_type {
-      GRAYSCALE => {
-        println!("Image already GRAYSCALE");
+      GRAYSCALE8 => {
+        println!("Image already GRAYSCALE8");
         return true
       },
       RGB8      => {
@@ -186,7 +186,7 @@ impl Image {
           }
         }
         self.data = new_pixel_array;
-        self.color_type = GRAYSCALE;
+        self.color_type = GRAYSCALE8;
         true
       },
       RGBA8     => {
@@ -215,7 +215,7 @@ impl Image {
           }
         }
         self.data = new_pixel_array;
-        self.color_type = GRAYSCALE;
+        self.color_type = GRAYSCALE8;
         true
       }
     }
@@ -223,7 +223,7 @@ impl Image {
 
   pub fn convert_to_RGB8(&mut self) -> bool {
     match self.color_type {
-      GRAYSCALE => {
+      GRAYSCALE8 => {
         let mut new_pixel_array: ~[u8] = ~[];
         for i in range(0, self.data.len()) {
           let lum = self.data[i];
@@ -257,7 +257,7 @@ impl Image {
 
   pub fn convert_to_RGBA8(&mut self) -> bool {
     match self.color_type {
-      GRAYSCALE => {
+      GRAYSCALE8 => {
         let mut new_pixel_array: ~[u8] = ~[];
         for i in range(0, self.data.len()) {
           let lum = self.data[i];
@@ -437,7 +437,7 @@ impl Image {
 
   /* Reader Status:
    *  - 24-bit read correctly
-   *  - 8-bit read as 24-bit images (need color pallete for grayscale images)
+   *  - 8-bit read as 24-bit images (need color pallete for GRAYSCALE8 images)
    *  - 32-bit read correctly
    */
   pub fn read_bmp(image_path_str: &str) -> Image{
@@ -450,7 +450,7 @@ impl Image {
     let mut image_width: u32 = 0 as u32;
     let mut image_height: u32 = 0 as u32;
     let mut planes: u16 = 0 as u16;
-    let mut bits_per_pixel: u16 = 0 as u16;   // 8 = Grayscale, 24 = RGB8, 32 = RGBA8
+    let mut bits_per_pixel: u16 = 0 as u16;   // 8 = GRAYSCALE8, 24 = RGB8, 32 = RGBA8
     let mut compression_type: u32 = 0 as u32;
     let mut size_of_bitmap: u32 = 0 as u32;   
 
@@ -558,7 +558,7 @@ impl Image {
           Header size: {}\t(40 = BMP 3.x, 108 = BMP 4.x, 124 = BMP 5.x)
           Dimensions: {}px x {}px
           Number of color planes: {}\t(Should always be 1 in BMPs)
-          Bits per pixel: {}\t(8 = Grayscale, 24 = RGB8, 32 = RGBA8)
+          Bits per pixel: {}\t(8 = GRAYSCALE8, 24 = RGB8, 32 = RGBA8)
           Compression type: {}
           Size of bitmap (in bytes): {}\t(May be 0 if uncompressed)
           
@@ -585,9 +585,9 @@ impl Image {
 
         // BI_RGB means uncompressed (BGR)
         if compression_type as int == 0 {
-          // GRAYSCALE
+          // GRAYSCALE8
           if bits_per_pixel as int == 8 {
-            println!("GRAYSCALE Image");
+            println!("GRAYSCALE8 Image");
             for y in range(0, image_height) {
               for x in range(0, image_width) {
                 match image.read_byte() {
@@ -838,9 +838,9 @@ impl Image {
     }
 
 
-    // GRAYSCALE not properly implemented yet, saved as RGB8
+    // GRAYSCALE8 not properly implemented yet, saved as RGB8
     if bits_per_pixel == 8 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: GRAYSCALE, data: image_data_bytes}    
+      Image{width: image_width as uint, height: image_height as uint, color_type: GRAYSCALE8, data: image_data_bytes}    
     }
     else if bits_per_pixel == 24 {
       Image{width: image_width as uint, height: image_height as uint, color_type: RGB8, data: image_data_bytes}    
@@ -980,7 +980,7 @@ impl Image {
     // Save as BMP 4.x
     else if version == 4 {
       match self.color_type {
-        GRAYSCALE => {
+        GRAYSCALE8 => {
           let filesize: u32 = ((self.width * self.height) + padding + 108 + 14) as u32; 
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
@@ -1050,7 +1050,7 @@ impl Image {
           file.write_le_u32(gamma_green).unwrap();
           file.write_le_u32(gamma_blue).unwrap();
 
-          // GRAYSCALE PALETTE
+          // GRAYSCALE8 PALETTE
           for i in range(0, 256) {
             file.write_u8(i as u8).unwrap();
             file.write_u8(i as u8).unwrap();
@@ -1533,7 +1533,7 @@ fn main() {
     /*for y in range(0, image.height) {
       for x in range(0, image.width) {
         match image.color_type {
-          GRAYSCALE => {
+          GRAYSCALE8 => {
             let i = x + image.width * y;
             print!("({}) ", image.data[i]);
           }
