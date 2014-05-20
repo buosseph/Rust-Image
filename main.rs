@@ -7,13 +7,8 @@ use std::os;
 use std::str;
 use std::uint;
 
-pub struct RGB_Pixel {
-  r: u8,
-  g: u8,
-  b: u8,
-}
-pub enum ColorType {    // Not yet implemented
-  GRAYSCALE = 8,
+pub enum ColorType {
+  GRAYSCALE = 8,  // Not properly implemented
   RGB = 24,
   RGBA = 32,
 }
@@ -24,38 +19,109 @@ pub struct Image {
   data: ~[u8],
 }
 impl Image {
-  pub fn new(height: uint, width: uint) -> Image {
-    let size = 3 * height * width;
-    let mut buffer = from_elem(size, 0u8);
-    Image{height: height, width: width, color_type: RGB, data: buffer}
+  pub fn new(width: uint, height: uint, color_type: int) -> Image {
+    match color_type {
+      8   => {
+        let size = width * height;
+        let mut buffer = from_elem(size, 0u8);
+        Image{width: width, height: height, color_type: GRAYSCALE, data: buffer}        
+      },
+      24  => {
+        let size = 3 * width * height;
+        let mut buffer = from_elem(size, 0u8);
+        Image{width: width, height: height, color_type: RGB, data: buffer}        
+      },
+      32  => {
+        let size = 4 * width * height;
+        let mut buffer = from_elem(size, 0u8);
+        Image{width: width, height: height, color_type: RGBA, data: buffer}            
+      },
+      _ => {fail!("Invalid color_type. Cannot create image.")}
+    }
   }
 
   fn buffer_size(&self) -> uint {
-    3 * self.width * self.height
+    match self.color_type {
+      GRAYSCALE   => {  self.width * self.height    },
+      RGB         => {  self.width * self.height * 3},
+      RGBA        => {  self.width * self.height * 4}
+    }
   }
  
+
   fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
-    let offset = (x * 3) + (y * self.width * 3);
-    if offset < self.buffer_size() {
-      Some(offset)
-    }else{
-      None
-    }
-  }
- 
-  pub fn get_pixel(&self, x: uint, y: uint) -> Option<RGB_Pixel> {
-    match self.get_offset(x, y) {
-      Some(offset) => {
-        let r1 = self.data[offset];
-        let g1 = self.data[offset + 1];
-        let b1 = self.data[offset + 2];
-        Some(RGB_Pixel{r: r1, g: g1, b: b1})
+    match self.color_type {
+      GRAYSCALE => {
+        let offset = (x + self.width * y);
+        if offset < self.buffer_size() {
+          Some(offset)
+        }else{
+          None
+        }        
       },
-      None => None
+      RGB => {
+        let offset = (x + self.width * y) * 3;
+        if offset < self.buffer_size() {
+          Some(offset)
+        }else{
+          None
+        }
+      },
+      RGBA => {
+        let offset = (x + self.width * y) * 4;
+        if offset < self.buffer_size() {
+          Some(offset)
+        }else{
+          None
+        }        
+      }
+    }
+
+
+  }
+
+  pub fn get_pixel(&self, x: uint, y: uint) -> Vec<u8>{
+    match self.color_type {
+      GRAYSCALE => {
+        match self.get_offset(x, y) {
+          Some(offset) => {
+            let pixel_data: Vec<u8> = vec!(self.data[offset]);
+            pixel_data
+          },
+          None => {fail!("Couldn't get RGB pixel")}
+        }        
+      },
+      RGB => {
+        match self.get_offset(x, y) {
+          Some(offset) => {
+            let pixel_data: Vec<u8> = vec!(
+              self.data[  offset      ],
+              self.data[  offset + 1  ],
+              self.data[  offset + 2  ]
+              );
+            pixel_data
+          },
+          None => {fail!("Couldn't get RGB pixel")}
+        }
+      },
+      RGBA => {
+        match self.get_offset(x, y) {
+          Some(offset) => {
+            let pixel_data: Vec<u8> = vec!(
+              self.data[  offset      ],
+              self.data[  offset + 1  ],
+              self.data[  offset + 2  ],
+              self.data[  offset + 3  ]
+              );
+            pixel_data
+          },
+          None => {fail!("Couldn't get RGB pixel")}
+        }        
+      }
     }
   }
  
-  pub fn set_pixel(&mut self, x: uint, y: uint, color: RGB_Pixel) -> bool {
+  /*pub fn set_pixel(&mut self, x: uint, y: uint, color: RGB_Pixel) -> bool {
     match self.get_offset(x, y) {
       Some(offset) => {
         self.data[offset] = color.r;
@@ -65,7 +131,7 @@ impl Image {
       },
       None => false
     }
-  }
+  }*/
 }
 
 // PPM Image format
@@ -190,8 +256,8 @@ impl Image {  // Not complete, and may never be
     let path = Path::new(filename);
     let mut file = File::create(&path);
     let header = format!("P6 {} {} 255\n", self.width, self.height);
-    file.write(header.as_bytes());
-    file.write(self.data);
+    file.write(header.as_bytes()).unwrap();
+    file.write(self.data).unwrap();
     true
   }
 }
@@ -653,22 +719,22 @@ impl Image {
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
           let bitmap_offset: u32 = 138 as u32;
-          file.write(signature.as_bytes());
-          file.write_le_u32(filesize);
-          file.write_le_u16(reserved1);
-          file.write_le_u16(reserved2);
-          file.write_le_u32(bitmap_offset);
+          file.write(signature.as_bytes()).unwrap();
+          file.write_le_u32(filesize).unwrap();
+          file.write_le_u16(reserved1).unwrap();
+          file.write_le_u16(reserved2).unwrap();
+          file.write_le_u32(bitmap_offset).unwrap();
 
           let header_size: u32 = 124 as u32;  // Size in bytes
           let image_width: u32 = self.width as u32;    // In pixels
           let image_height: u32 = self.height as u32;   // In pixels
           let planes: u16 = 1 as u16;         // Number of color planes, in BMP this is always 1
           let bits_per_pixel: u16 = 32 as u16;  // Number of bits per pixel
-          file.write_le_u32(header_size);
-          file.write_le_u32(image_width);
-          file.write_le_u32(image_height);
-          file.write_le_u16(planes);
-          file.write_le_u16(bits_per_pixel);
+          file.write_le_u32(header_size).unwrap();
+          file.write_le_u32(image_width).unwrap();
+          file.write_le_u32(image_height).unwrap();
+          file.write_le_u16(planes).unwrap();
+          file.write_le_u16(bits_per_pixel).unwrap();
 
           let compression_type: u32 = 3 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
           let size_of_bitmap: u32 = (self.width * self.height * 4) as u32; // Size in bytes, 0 when uncompressed = 0
@@ -676,12 +742,12 @@ impl Image {
           let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
           let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
           let colors_important: u32 = 0 as u32;   // 0 if all colors are important
-          file.write_le_u32(compression_type);
-          file.write_le_u32(size_of_bitmap);
-          file.write_le_u32(horizontal_resolution);
-          file.write_le_u32(vertical_resolution);
-          file.write_le_u32(colors_used);
-          file.write_le_u32(colors_important);        
+          file.write_le_u32(compression_type).unwrap();
+          file.write_le_u32(size_of_bitmap).unwrap();
+          file.write_le_u32(horizontal_resolution).unwrap();
+          file.write_le_u32(vertical_resolution).unwrap();
+          file.write_le_u32(colors_used).unwrap();
+          file.write_le_u32(colors_important).unwrap();        
 
           let red_mask: u32 = 0xFF000000 as u32;
           let green_mask: u32 = 0x00FF0000 as u32;
@@ -700,32 +766,32 @@ impl Image {
           let gamma_red: u32 = 0 as u32;
           let gamma_green: u32 = 0 as u32;
           let gamma_blue: u32 = 0 as u32;
-          file.write_le_u32(red_mask);
-          file.write_le_u32(green_mask);
-          file.write_le_u32(blue_mask);
-          file.write_le_u32(alpha_mask);
-          file.write_le_u32(cs_type);
-          file.write_le_u32(endpoint_red_x);
-          file.write_le_u32(endpoint_red_y);
-          file.write_le_u32(endpoint_red_z);
-          file.write_le_u32(endpoint_green_x);
-          file.write_le_u32(endpoint_green_y);
-          file.write_le_u32(endpoint_green_z);
-          file.write_le_u32(endpoint_blue_x);
-          file.write_le_u32(endpoint_blue_y);
-          file.write_le_u32(endpoint_blue_z);
-          file.write_le_u32(gamma_red);
-          file.write_le_u32(gamma_green);
-          file.write_le_u32(gamma_blue);
+          file.write_le_u32(red_mask).unwrap();
+          file.write_le_u32(green_mask).unwrap();
+          file.write_le_u32(blue_mask).unwrap();
+          file.write_le_u32(alpha_mask).unwrap();
+          file.write_le_u32(cs_type).unwrap();
+          file.write_le_u32(endpoint_red_x).unwrap();
+          file.write_le_u32(endpoint_red_y).unwrap();
+          file.write_le_u32(endpoint_red_z).unwrap();
+          file.write_le_u32(endpoint_green_x).unwrap();
+          file.write_le_u32(endpoint_green_y).unwrap();
+          file.write_le_u32(endpoint_green_z).unwrap();
+          file.write_le_u32(endpoint_blue_x).unwrap();
+          file.write_le_u32(endpoint_blue_y).unwrap();
+          file.write_le_u32(endpoint_blue_z).unwrap();
+          file.write_le_u32(gamma_red).unwrap();
+          file.write_le_u32(gamma_green).unwrap();
+          file.write_le_u32(gamma_blue).unwrap();
 
           let intent: u32 = 2 as u32; // Rendering intent values not specified
           let profile_data: u32 = 0 as u32;
           let profile_size: u32 = 0 as u32;
           let reserved: u32 = 0 as u32;
-          file.write_le_u32(intent);
-          file.write_le_u32(profile_data);
-          file.write_le_u32(profile_size);
-          file.write_le_u32(reserved);
+          file.write_le_u32(intent).unwrap();
+          file.write_le_u32(profile_data).unwrap();
+          file.write_le_u32(profile_size).unwrap();
+          file.write_le_u32(reserved).unwrap();
 
 
 
@@ -736,10 +802,10 @@ impl Image {
               let i = x * 4 + self.width * bmp_y * 4;
     
               // Write ABGR
-              file.write_u8(self.data[i+3]);
-              file.write_u8(self.data[i+2]);
-              file.write_u8(self.data[i+1]);
-              file.write_u8(self.data[i]);
+              file.write_u8(self.data[i+3]).unwrap();
+              file.write_u8(self.data[i+2]).unwrap();
+              file.write_u8(self.data[i+1]).unwrap();
+              file.write_u8(self.data[i]).unwrap();
 
             }
           }
@@ -759,22 +825,22 @@ impl Image {
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
           let bitmap_offset: u32 = 122 as u32;
-          file.write(signature.as_bytes());
-          file.write_le_u32(filesize);
-          file.write_le_u16(reserved1);
-          file.write_le_u16(reserved2);
-          file.write_le_u32(bitmap_offset);
+          file.write(signature.as_bytes()).unwrap();
+          file.write_le_u32(filesize).unwrap();
+          file.write_le_u16(reserved1).unwrap();
+          file.write_le_u16(reserved2).unwrap();
+          file.write_le_u32(bitmap_offset).unwrap();
 
           let header_size: u32 = 108 as u32;  // Size in bytes
           let image_width: u32 = self.width as u32;    // In pixels
           let image_height: u32 = self.height as u32;   // In pixels
           let planes: u16 = 1 as u16;         // Number of color planes, in BMP this is always 1
           let bits_per_pixel: u16 = 8 as u16;  // Number of bits per pixel
-          file.write_le_u32(header_size);
-          file.write_le_u32(image_width);
-          file.write_le_u32(image_height);
-          file.write_le_u16(planes);
-          file.write_le_u16(bits_per_pixel);
+          file.write_le_u32(header_size).unwrap();
+          file.write_le_u32(image_width).unwrap();
+          file.write_le_u32(image_height).unwrap();
+          file.write_le_u16(planes).unwrap();
+          file.write_le_u16(bits_per_pixel).unwrap();
 
           let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
           let size_of_bitmap: u32 = (self.width * self.height + padding) as u32; // Size in bytes, 0 when uncompressed = 0
@@ -782,12 +848,12 @@ impl Image {
           let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
           let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
           let colors_important: u32 = 0 as u32;   // 0 if all colors are important
-          file.write_le_u32(compression_type);
-          file.write_le_u32(size_of_bitmap);
-          file.write_le_u32(horizontal_resolution);
-          file.write_le_u32(vertical_resolution);
-          file.write_le_u32(colors_used);
-          file.write_le_u32(colors_important);        
+          file.write_le_u32(compression_type).unwrap();
+          file.write_le_u32(size_of_bitmap).unwrap();
+          file.write_le_u32(horizontal_resolution).unwrap();
+          file.write_le_u32(vertical_resolution).unwrap();
+          file.write_le_u32(colors_used).unwrap();
+          file.write_le_u32(colors_important).unwrap();        
 
           let red_mask: u32 = 0x00000000 as u32; //BGRs when not compressed? This is unclear
           let green_mask: u32 = 0x00000000 as u32;
@@ -806,45 +872,45 @@ impl Image {
           let gamma_red: u32 = 0 as u32;
           let gamma_green: u32 = 0 as u32;
           let gamma_blue: u32 = 0 as u32;
-          file.write_le_u32(red_mask);
-          file.write_le_u32(green_mask);
-          file.write_le_u32(blue_mask);
-          file.write_le_u32(alpha_mask);
-          file.write_le_u32(cs_type);
-          file.write_le_u32(endpoint_red_x);
-          file.write_le_u32(endpoint_red_y);
-          file.write_le_u32(endpoint_red_z);
-          file.write_le_u32(endpoint_green_x);
-          file.write_le_u32(endpoint_green_y);
-          file.write_le_u32(endpoint_green_z);
-          file.write_le_u32(endpoint_blue_x);
-          file.write_le_u32(endpoint_blue_y);
-          file.write_le_u32(endpoint_blue_z);
-          file.write_le_u32(gamma_red);
-          file.write_le_u32(gamma_green);
-          file.write_le_u32(gamma_blue);
+          file.write_le_u32(red_mask).unwrap();
+          file.write_le_u32(green_mask).unwrap();
+          file.write_le_u32(blue_mask).unwrap();
+          file.write_le_u32(alpha_mask).unwrap();
+          file.write_le_u32(cs_type).unwrap();
+          file.write_le_u32(endpoint_red_x).unwrap();
+          file.write_le_u32(endpoint_red_y).unwrap();
+          file.write_le_u32(endpoint_red_z).unwrap();
+          file.write_le_u32(endpoint_green_x).unwrap();
+          file.write_le_u32(endpoint_green_y).unwrap();
+          file.write_le_u32(endpoint_green_z).unwrap();
+          file.write_le_u32(endpoint_blue_x).unwrap();
+          file.write_le_u32(endpoint_blue_y).unwrap();
+          file.write_le_u32(endpoint_blue_z).unwrap();
+          file.write_le_u32(gamma_red).unwrap();
+          file.write_le_u32(gamma_green).unwrap();
+          file.write_le_u32(gamma_blue).unwrap();
 
           if compression_type == 0 {
             for y in range(0, self.height) {
               let bmp_y = self.height - 1 - y;
               for x in range(0, self.width) {
                 let index = x + self.width * bmp_y;
-                file.write_u8(self.data[index]);
+                file.write_u8(self.data[index]).unwrap();
               }
 
               // Padding based on image width, scanlines must be multiple of 4
               match image_width % 4 {
                 1 => {
-                  file.write_u8(0);
+                  file.write_u8(0).unwrap();
                 },
                 2 => {
-                  file.write_u8(0);
-                  file.write_u8(0);
+                  file.write_u8(0).unwrap();
+                  file.write_u8(0).unwrap();
                 },
                 3 => {
-                  file.write_u8(0);
-                  file.write_u8(0);
-                  file.write_u8(0);
+                  file.write_u8(0).unwrap();
+                  file.write_u8(0).unwrap();
+                  file.write_u8(0).unwrap();
                 },
                 _ => {
                   continue;
@@ -862,22 +928,22 @@ impl Image {
           let reserved1: u16 = 0 as u16;
           let reserved2: u16 = 0 as u16;
           let bitmap_offset: u32 = 122 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 122
-          file.write(signature.as_bytes());
-          file.write_le_u32(filesize);
-          file.write_le_u16(reserved1);
-          file.write_le_u16(reserved2);
-          file.write_le_u32(bitmap_offset);
+          file.write(signature.as_bytes()).unwrap();
+          file.write_le_u32(filesize).unwrap();
+          file.write_le_u16(reserved1).unwrap();
+          file.write_le_u16(reserved2).unwrap();
+          file.write_le_u32(bitmap_offset).unwrap();
 
           let header_size: u32 = 108 as u32;  // Size in bytes
           let image_width: u32 = self.width as u32;    // In pixels
           let image_height: u32 = self.height as u32;   // In pixels
           let planes: u16 = 1 as u16;         // Number of color planes, in BMP this is always 1
           let bits_per_pixel: u16 = 24 as u16;  // Number of bits per pixel
-          file.write_le_u32(header_size);
-          file.write_le_u32(image_width);
-          file.write_le_u32(image_height);
-          file.write_le_u16(planes);
-          file.write_le_u16(bits_per_pixel);
+          file.write_le_u32(header_size).unwrap();
+          file.write_le_u32(image_width).unwrap();
+          file.write_le_u32(image_height).unwrap();
+          file.write_le_u16(planes).unwrap();
+          file.write_le_u16(bits_per_pixel).unwrap();
 
           let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
           let size_of_bitmap: u32 = (self.width * self.height * 3 + padding) as u32; // Size in bytes, 0 when uncompressed = 0
@@ -885,12 +951,12 @@ impl Image {
           let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
           let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
           let colors_important: u32 = 0 as u32;   // 0 if all colors are important
-          file.write_le_u32(compression_type);
-          file.write_le_u32(size_of_bitmap);
-          file.write_le_u32(horizontal_resolution);
-          file.write_le_u32(vertical_resolution);
-          file.write_le_u32(colors_used);
-          file.write_le_u32(colors_important);        
+          file.write_le_u32(compression_type).unwrap();
+          file.write_le_u32(size_of_bitmap).unwrap();
+          file.write_le_u32(horizontal_resolution).unwrap();
+          file.write_le_u32(vertical_resolution).unwrap();
+          file.write_le_u32(colors_used).unwrap();
+          file.write_le_u32(colors_important).unwrap();        
 
           let red_mask: u32 = 0x00FF0000 as u32; //BGRs when not compressed? This is unclear
           let green_mask: u32 = 0x0000FF00 as u32;
@@ -909,30 +975,40 @@ impl Image {
           let gamma_red: u32 = 0 as u32;
           let gamma_green: u32 = 0 as u32;
           let gamma_blue: u32 = 0 as u32;
-          file.write_le_u32(red_mask);
-          file.write_le_u32(green_mask);
-          file.write_le_u32(blue_mask);
-          file.write_le_u32(alpha_mask);
-          file.write_le_u32(cs_type);
-          file.write_le_u32(endpoint_red_x);
-          file.write_le_u32(endpoint_red_y);
-          file.write_le_u32(endpoint_red_z);
-          file.write_le_u32(endpoint_green_x);
-          file.write_le_u32(endpoint_green_y);
-          file.write_le_u32(endpoint_green_z);
-          file.write_le_u32(endpoint_blue_x);
-          file.write_le_u32(endpoint_blue_y);
-          file.write_le_u32(endpoint_blue_z);
-          file.write_le_u32(gamma_red);
-          file.write_le_u32(gamma_green);
-          file.write_le_u32(gamma_blue);
+          file.write_le_u32(red_mask).unwrap();
+          file.write_le_u32(green_mask).unwrap();
+          file.write_le_u32(blue_mask).unwrap();
+          file.write_le_u32(alpha_mask).unwrap();
+          file.write_le_u32(cs_type).unwrap();
+          file.write_le_u32(endpoint_red_x).unwrap();
+          file.write_le_u32(endpoint_red_y).unwrap();
+          file.write_le_u32(endpoint_red_z).unwrap();
+          file.write_le_u32(endpoint_green_x).unwrap();
+          file.write_le_u32(endpoint_green_y).unwrap();
+          file.write_le_u32(endpoint_green_z).unwrap();
+          file.write_le_u32(endpoint_blue_x).unwrap();
+          file.write_le_u32(endpoint_blue_y).unwrap();
+          file.write_le_u32(endpoint_blue_z).unwrap();
+          file.write_le_u32(gamma_red).unwrap();
+          file.write_le_u32(gamma_green).unwrap();
+          file.write_le_u32(gamma_blue).unwrap();
 
           if compression_type == 0 {
             for y in range(0, self.height) {
               let bmp_y = self.height - 1 - y;
               for x in range(0, self.width) {
                 
-                match self.get_pixel(x,bmp_y) {
+                let mut pixel_data: Vec<u8> = self.get_pixel(x,bmp_y);
+                let blue  = pixel_data.pop().unwrap();
+                let green = pixel_data.pop().unwrap();
+                let red   = pixel_data.pop().unwrap();
+
+                file.write_u8(blue).unwrap();
+                file.write_u8(green).unwrap();
+                file.write_u8(red).unwrap();
+
+                // Needs to be changed or removed
+                /*match self.get_pixel(x,bmp_y) {
 
                   Some(pixel) => {
                     let blue = pixel.b;
@@ -944,23 +1020,23 @@ impl Image {
                     file.write_u8(red);
                   },
                   None => {fail!("Error writing image as BMP file")}
-                }
+                }*/
 
               }
 
               // Padding based on image width, scanlines must be multiple of 4
               match image_width % 4 {
                 1 => {
-                  file.write_u8(0);
+                  file.write_u8(0).unwrap();
                 },
                 2 => {
-                  file.write_u8(0);
-                  file.write_u8(0);
+                  file.write_u8(0).unwrap();
+                  file.write_u8(0).unwrap();
                 },
                 3 => {
-                  file.write_u8(0);
-                  file.write_u8(0);
-                  file.write_u8(0);
+                  file.write_u8(0).unwrap();
+                  file.write_u8(0).unwrap();
+                  file.write_u8(0).unwrap();
                 },
                 _ => {
                   continue;
@@ -982,11 +1058,11 @@ impl Image {
       let reserved1: u16 = 0 as u16;
       let reserved2: u16 = 0 as u16;
       let bitmap_offset: u32 = 54 as u32; // Bitmap 3.x => 54, Bitmap 4.x => 108
-      file.write(signature.as_bytes());
-      file.write_le_u32(filesize);
-      file.write_le_u16(reserved1);
-      file.write_le_u16(reserved2);
-      file.write_le_u32(bitmap_offset);
+      file.write(signature.as_bytes()).unwrap();
+      file.write_le_u32(filesize).unwrap();
+      file.write_le_u16(reserved1).unwrap();
+      file.write_le_u16(reserved2).unwrap();
+      file.write_le_u32(bitmap_offset).unwrap();
 
       // Bitmap 3.x Header, 40 bytes in size (no colorspace info)
       let header_size: u32 = 40 as u32;  // Size in bytes
@@ -994,11 +1070,11 @@ impl Image {
       let image_height: u32 = self.height as u32;   // In pixels
       let planes: u16 = 1 as u16;         // Always 1
       let bits_per_pixel: u16 = 24 as u16;  // Number of bits per pixel
-      file.write_le_u32(header_size);
-      file.write_le_u32(image_width);
-      file.write_le_u32(image_height);
-      file.write_le_u16(planes);
-      file.write_le_u16(bits_per_pixel);
+      file.write_le_u32(header_size).unwrap();
+      file.write_le_u32(image_width).unwrap();
+      file.write_le_u32(image_height).unwrap();
+      file.write_le_u16(planes).unwrap();
+      file.write_le_u16(bits_per_pixel).unwrap();
 
       let compression_type: u32 = 0 as u32;    // 0 is uncompressed, 1 is RLE algorithm, 2 is 4-bit RLE algorithm
       let size_of_bitmap: u32 = 0 as u32; // Size in bytes, 0 when uncompressed
@@ -1006,12 +1082,12 @@ impl Image {
       let vertical_resolution: u32 = 2835 as u32; // In pixels per meter
       let colors_used: u32 = 0 as u32;        // Number of colors in palette, 0 if no palette
       let colors_important: u32 = 0 as u32;   // 0 if all colors are important
-      file.write_le_u32(compression_type);
-      file.write_le_u32(size_of_bitmap);
-      file.write_le_u32(horizontal_resolution);
-      file.write_le_u32(vertical_resolution);
-      file.write_le_u32(colors_used);
-      file.write_le_u32(colors_important);
+      file.write_le_u32(compression_type).unwrap();
+      file.write_le_u32(size_of_bitmap).unwrap();
+      file.write_le_u32(horizontal_resolution).unwrap();
+      file.write_le_u32(vertical_resolution).unwrap();
+      file.write_le_u32(colors_used).unwrap();
+      file.write_le_u32(colors_important).unwrap();
 
       // Color Palette (only if bits_per_pixel == 1, 4, or 8)
 
@@ -1019,31 +1095,29 @@ impl Image {
       for y in range(0, self.height) {
         let bmp_y = self.height - 1 - y;
         for x in range(0, self.width) {
-          match self.get_pixel(x,bmp_y) {
-            Some(pixel) => {
-              let blue = pixel.b;
-              let green = pixel.g;
-              let red = pixel.r;
 
-              file.write_u8(blue);
-              file.write_u8(green);
-              file.write_u8(red);
-            },
-            None => {fail!("Error writing image as BMP file")}
-          }
+          let mut pixel_data: Vec<u8> = self.get_pixel(x,bmp_y);
+          let blue  = pixel_data.pop().unwrap();
+          let green = pixel_data.pop().unwrap();
+          let red   = pixel_data.pop().unwrap();
+
+          file.write_u8(blue).unwrap();
+          file.write_u8(green).unwrap();
+          file.write_u8(red).unwrap();
+
         }
         // Padding based on image width, scanlines must be multiple of 4
         match image_width % 4 {
           1 => {
-            file.write_u8(0);
+            file.write_u8(0).unwrap();
           },
           2 => {
-            file.write_u8(0);
+            file.write_u8(0).unwrap();
           },
           3 => {
-            file.write_u8(0);
-            file.write_u8(0);
-            file.write_u8(0);
+            file.write_u8(0).unwrap();
+            file.write_u8(0).unwrap();
+            file.write_u8(0).unwrap();
           },
           _ => {
             continue;
@@ -1060,6 +1134,8 @@ impl Image {
 }
 
 // Image processing traits and functions
+// Commented out until pixel functions are updated
+/*
 trait PointProcessor {
   fn negative(&mut self);
   fn brighten(&mut self, bias: int);
@@ -1304,6 +1380,7 @@ impl ConvolutionFilter for Image {
     // println!("Time of brute force algorithm: {}", time);
   }
 }
+*/
 
 fn main() {
   let args = os::args();
