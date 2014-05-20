@@ -48,7 +48,6 @@ impl Image {
     }
   }
  
-
   fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
     match self.color_type {
       GRAYSCALE => {
@@ -285,7 +284,7 @@ impl Image {  // Not complete, and may never be
   }
 }
 
-// BMP 3.x & 4.x Image formats
+// BMP Image format
 impl Image {
   /* NOTES:
    * BMP pixels stored as BGR, not RGB
@@ -1141,10 +1140,7 @@ impl Image {
   }
 }
 
-// Image processing traits and functions
-// Commented out until pixel functions are updated
-
-
+// Image processing traits and functions (Only for RGB images)
 trait PointProcessor {
   fn negative(&mut self);
   fn brighten(&mut self, bias: int);
@@ -1334,7 +1330,6 @@ impl PointProcessor for Image {
     }
   }
 }
-
 
 trait ConvolutionFilter {
   fn blur(&mut self);
