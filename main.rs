@@ -1,5 +1,6 @@
 //extern crate time;
 
+
 use std::slice::from_elem;
 use std::path::posix::{Path};
 use std::io::File;
@@ -19,24 +20,29 @@ pub struct Image {
   data: ~[u8],
 }
 impl Image {
-  pub fn new(width: uint, height: uint, color_type: int) -> Image {
+  // Updated
+  #[allow(dead_code)]
+  pub fn new(width: uint, height: uint, color_type: int) -> Option<Image> {
     match color_type {
       8   => {
         let size = width * height;
         let buffer = from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: GRAYSCALE8, data: buffer}        
+        Some(Image{width: width, height: height, color_type: GRAYSCALE8, data: buffer})        
       },
       24  => {
         let size = 3 * width * height;
         let buffer = from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: RGB8, data: buffer}        
+        Some(Image{width: width, height: height, color_type: RGB8, data: buffer})     
       },
       32  => {
         let size = 4 * width * height;
         let buffer = from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: RGBA8, data: buffer}            
+        Some(Image{width: width, height: height, color_type: RGBA8, data: buffer})
       },
-      _ => {fail!("Invalid color_type. Cannot create image.")}
+      _ => {
+        println!("Invalid color_type. Cannot create image.");
+        None
+      }
     }
   }
 
@@ -77,6 +83,7 @@ impl Image {
     }
   }
 
+  #[allow(dead_code)]
   pub fn get_pixel(&self, x: uint, y: uint) -> Vec<u8>{
     match self.color_type {
       GRAYSCALE8 => {
@@ -118,6 +125,7 @@ impl Image {
     }
   }
  
+  #[allow(dead_code)]
   pub fn set_pixel(&mut self, x: uint, y: uint, mut color: Vec<u8>) -> bool {
     match self.color_type {
       GRAYSCALE8 => {
@@ -155,7 +163,8 @@ impl Image {
     }
   }
 
-  pub fn convert_to_GRAYSCALE(&mut self) -> bool {
+  #[allow(dead_code)]
+  pub fn convert_to_GRAYSCALE8(&mut self) -> bool {
     match self.color_type {
       GRAYSCALE8 => {
         println!("Image already GRAYSCALE8");
@@ -194,7 +203,7 @@ impl Image {
         for y in range(0, self.height){
           for x in range(0, self.width){
             let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
-            let a  = pixel_data.pop().unwrap();
+            pixel_data.pop().unwrap();
             let b  = pixel_data.pop().unwrap();
             let g  = pixel_data.pop().unwrap();
             let r  = pixel_data.pop().unwrap();
@@ -221,6 +230,7 @@ impl Image {
     }
   } 
 
+  #[allow(dead_code)]
   pub fn convert_to_RGB8(&mut self) -> bool {
     match self.color_type {
       GRAYSCALE8 => {
@@ -255,6 +265,7 @@ impl Image {
     }
   }
 
+  #[allow(dead_code)]
   pub fn convert_to_RGBA8(&mut self) -> bool {
     match self.color_type {
       GRAYSCALE8 => {
@@ -299,6 +310,7 @@ impl Image {
 
 // PPM Image format
 impl Image {  // Not complete, and may never be
+  #[allow(dead_code)]
   fn read_ppm(image_path_str: &str) -> Image {
     let path = Path::new(image_path_str);
 
@@ -414,7 +426,9 @@ impl Image {  // Not complete, and may never be
     };
     // Only testing color images
     Image{width: width, height: height, color_type: RGB8, data: image_data_bytes}
-  }  
+  }
+
+  #[allow(dead_code)]
   fn write_ppm(&self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
@@ -440,7 +454,9 @@ impl Image {
    *  - 8-bit read as 24-bit images (need color pallete for GRAYSCALE8 images)
    *  - 32-bit read correctly
    */
-  pub fn read_bmp(image_path_str: &str) -> Image{
+
+  #[allow(dead_code)]
+  pub fn read_bmp(image_path_str: &str) -> Option<Image>{
     let path = Path::new(image_path_str);
 
     let mut signature: ~[u8] = ~[0 as u8, 0 as u8];
@@ -778,6 +794,7 @@ impl Image {
             println!("RGBA8 Image");
             for y in range(0, image_height) {
               for x in range(0, image_width) {
+
                 match image.read_exact(4) {
                   Ok(mut pixel_data) => {       
                     match pixel_data.pop() {
@@ -800,11 +817,10 @@ impl Image {
                   Err(e)    => {fail!("Error reading BMP pixel")}
                 }
               }
+
             }
           }
         }
-
-        //}
       },
       Err(e)  => {println!("Error opening file: {}", e)}
     }
@@ -840,16 +856,17 @@ impl Image {
 
     // GRAYSCALE8 not properly implemented yet, saved as RGB8
     if bits_per_pixel == 8 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: GRAYSCALE8, data: image_data_bytes}    
+      Some(Image{width: image_width as uint, height: image_height as uint, color_type: GRAYSCALE8, data: image_data_bytes})
     }
     else if bits_per_pixel == 24 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: RGB8, data: image_data_bytes}    
+      Some(Image{width: image_width as uint, height: image_height as uint, color_type: RGB8, data: image_data_bytes})
     }
     else if bits_per_pixel == 32 {
-      Image{width: image_width as uint, height: image_height as uint, color_type: RGBA8, data: image_data_bytes}    
+      Some(Image{width: image_width as uint, height: image_height as uint, color_type: RGBA8, data: image_data_bytes})
     }
     else {
-      fail!("Error writing image as valid colorspace")
+      println!("Error writing image as valid colorspace");
+      None
     }
   }
 
@@ -858,6 +875,8 @@ impl Image {
    *  - 24-bit BMPv4 write correctly
    *  - 8-bit BMPv4 doesn't work at all.
    */
+
+  #[allow(dead_code)]
   pub fn write_bmp(&mut self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
@@ -1286,6 +1305,7 @@ impl Image {
   }
 }
 
+
 // Image processing traits and functions (Only for RGB8 images)
 trait PointProcessor {
   fn negative(&mut self);
@@ -1294,6 +1314,8 @@ trait PointProcessor {
   fn saturate(&mut self, gain: f32);
 }
 impl PointProcessor for Image {
+
+  #[allow(dead_code)]
   fn negative(&mut self) {
     // Brute force        Time: 19257397 ns
     // Vectorize by 8     Time:  5118442 ns
@@ -1322,6 +1344,8 @@ impl PointProcessor for Image {
     // let time = end as uint - start as uint;
     // println!("Time of vectorized algorithm: {}", time);
   }
+
+  #[allow(dead_code)]
   fn brighten(&mut self, bias: int) {
     // Brute force        Time: 33111543 ns
     // let start = time::precise_time_ns();
@@ -1354,6 +1378,8 @@ impl PointProcessor for Image {
     // let time = end as uint - start as uint;
     // println!("Time of algorithm: {}", time);
   }
+
+  #[allow(dead_code)]
   fn contrast(&mut self, gain: f32) {
     let mut total_luminance: f32 = 0.;
 
@@ -1410,6 +1436,8 @@ impl PointProcessor for Image {
       }
     }
   }
+
+  #[allow(dead_code)]
   fn saturate(&mut self, gain: f32) {
     for y in range(0, self.height){
       for x in range(0, self.width){
@@ -1447,11 +1475,11 @@ impl PointProcessor for Image {
     }
   }
 }
-
 trait ConvolutionFilter {
   fn blur(&mut self);
 }
 impl ConvolutionFilter for Image {
+  #[allow(dead_code)]
   fn blur(&mut self) {
     // Brute force        Time: 264835676 ns
     // let start = time::precise_time_ns();
@@ -1525,9 +1553,18 @@ fn main() {
   }
   else {
 
-    let mut image = Image::read_bmp(args[1]);
+    let image = Image::read_bmp(args[1]);
 
-    image.convert_to_GRAYSCALE();
+    match image {
+      Some(mut image) => {
+        image.write_bmp("image.bmp");
+      },
+      None  => {
+        println!("Looks like you didn't get a valid image.");
+      }
+    }
+
+    //image.convert_to_GRAYSCALE8();
     
     
     /*for y in range(0, image.height) {
@@ -1551,7 +1588,7 @@ fn main() {
     }*/
     
 
-    image.write_bmp("image.bmp");
+    
 
   }
 
