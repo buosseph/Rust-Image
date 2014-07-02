@@ -1,7 +1,7 @@
 //extern crate time;
 
 #![allow(unused_imports)]
-#![allow(unused_variable)]
+
 
 use std::slice::from_elem;
 use std::path::posix::{Path};
@@ -22,7 +22,7 @@ pub struct Image {
   data: ~[u8],
 }
 impl Image {
-  // Updated
+
   #[allow(dead_code)]
   pub fn new(width: uint, height: uint, color_type: ColorType) -> Image {
     match color_type {
@@ -44,7 +44,6 @@ impl Image {
     }
   }
 
-  // No update needed
   fn buffer_size(&self) -> uint {
     match self.color_type {
       GRAYSCALE8   => {  self.width * self.height    },
@@ -53,7 +52,6 @@ impl Image {
     }
   }
  
-  // No update needed
   fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
     match self.color_type {
       GRAYSCALE8 => {
@@ -83,7 +81,6 @@ impl Image {
     }
   }
 
-  // No update needed
   #[allow(dead_code)]
   pub fn get_pixel(&self, x: uint, y: uint) -> Vec<u8>{
     match self.color_type {
@@ -126,7 +123,6 @@ impl Image {
     }
   }
  
-  // No update needed
   #[allow(dead_code)]
   pub fn set_pixel(&mut self, x: uint, y: uint, mut color: Vec<u8>) -> bool {
     match self.color_type {
@@ -164,6 +160,9 @@ impl Image {
       }
     }
   }
+
+
+  // Conversion functions not yet tested for need of update
 
   #[allow(dead_code)]
   pub fn convert_to_GRAYSCALE8(&mut self) -> bool {
@@ -310,7 +309,6 @@ impl Image {
   }  
 
 
-  /******** Getters ********/
   pub fn get_width(&self) -> uint { self.width }
   pub fn get_height(&self) -> uint { self.height }
   pub fn get_color_type(&self) -> ColorType { self.color_type }  
@@ -448,7 +446,11 @@ impl Image {
 }*/
 
 // BMP Image format
-/*impl Image {
+trait BMP {
+  fn read_image(image_path_str: &str) -> Option<Self>;
+  fn write_image(&mut self, filename: &str) -> bool;
+}
+impl BMP for Image {
   /* NOTES:
    * BMP pixels stored as BGR, not RGB8
    * If height is positive, scanlines stored BOTTOM UP --> store pixels starting from bottom row when writing
@@ -464,8 +466,11 @@ impl Image {
    */
 
   #[allow(dead_code)]
-  pub fn read_bmp(image_path_str: &str) -> Option<Image>{
+  #[allow(unused_variable)]
+  #[allow(dead_assignment)]
+  fn read_image(image_path_str: &str) -> Option<Image>{
     let path = Path::new(image_path_str);
+
 
     let mut signature: ~[u8] = ~[0 as u8, 0 as u8];
     let mut file_size: u32 = 0 as u32;      
@@ -485,7 +490,7 @@ impl Image {
     match File::open(&path) {
       Ok(mut image) => {
         match image.read(signature) {
-          Ok(num_of_bytes) =>  {
+          Ok(_) =>  {
             match str::from_utf8_owned(signature) {
               Some(read_signature)  => {
                 if !str::eq(&read_signature, &~"BM") {
@@ -507,9 +512,9 @@ impl Image {
         }
         // Reserved & pixel data offset
         match image.read_le_u16() {
-          Ok(read_reserved1) => {
+          Ok(_) => {
             match image.read_le_u16() {
-              Ok(read_reserved2) => {
+              Ok(_) => {
                 match image.read_le_u32() {
                   Ok(read_offset) => {
                     offset = read_offset;
@@ -600,9 +605,9 @@ impl Image {
           remainder
         );*/
 
-        for i in range(0, remainder) {
+        for _ in range(0, remainder) {
           match image.read_byte() {
-            Ok(byte)  => {continue},
+            Ok(_)  => {continue},
             Err(e)    => {fail!("Error reading BMP header: {}", e)}
           }
         }
@@ -621,7 +626,7 @@ impl Image {
                     // buffer.push(pixel_data);
                     // buffer.push(pixel_data);
                   },
-                  Err(e)    => {fail!("Error reading BMP pixel")}
+                  Err(e)    => {fail!("Error reading BMP pixel at ({}, {}): {}", x, y, e)}
                 }
               }
 
@@ -635,11 +640,10 @@ impl Image {
                       }
                       else {
                         break;
-                        fail!("Error reading padding at end of scanline");
                       }
                     },
                     Err(e) => {
-                      fail!("Error checking padding at end of scanline");
+                      fail!("Error checking padding at end of scanline: {}", e);
                     }
                   }
                 },
@@ -651,11 +655,10 @@ impl Image {
                       }
                       else {
                         break;
-                        fail!("Error reading padding at end of scanline");
                       }
                     },
                     Err(e) => {
-                      fail!("Error checking padding at end of scanline");
+                      fail!("Error checking padding at end of scanline: {}", e);
                     }
                   }
                 },
@@ -670,21 +673,19 @@ impl Image {
                             }
                             else {
                               break;
-                              fail!("Error reading padding at end of scanline");
                             }
                           },
                           Err(e) => {
-                            fail!("Error checking padding at end of scanline");
+                            fail!("Error checking padding at end of scanline: {}", e);
                           }
                         }
                       }
                       else {
                         break;
-                        fail!("Error reading padding at end of scanline");
                       }
                     },
                     Err(e) => {
-                      fail!("Error checking padding at end of scanline");
+                      fail!("Error checking padding at end of scanline: {}", e);
                     }
                   }
                 },
@@ -705,18 +706,18 @@ impl Image {
                   Ok(mut pixel_data) => {
                     match pixel_data.pop() {
                       Some(red) => {buffer.push(red)},
-                      None  => {fail!("Error getting red component for BMP pixel")}
+                      None  => {fail!("Error getting red component for BMP pixel at ({}, {})", x, y)}
                     }
                     match pixel_data.pop() {
                       Some(green) => {buffer.push(green)},
-                      None  => {fail!("Error getting green component for BMP pixel")}
+                      None  => {fail!("Error getting green component for BMP pixel at ({}, {})", x, y)}
                     }
                     match pixel_data.pop() {
                       Some(blue) => {buffer.push(blue)},
-                      None  => {fail!("Error getting blue component for BMP pixel")}
+                      None  => {fail!("Error getting blue component for BMP pixel at ({}, {})", x, y)}
                     }
                   },
-                  Err(e)    => {fail!("Error reading BMP pixel")}
+                  Err(e)    => {fail!("Error reading BMP pixel at ({}, {}): {}", x, y, e)}
                 }
               }
 
@@ -730,11 +731,10 @@ impl Image {
                       }
                       else {
                         break;
-                        fail!("Error reading padding at end of scanline");
                       }
                     },
                     Err(e) => {
-                      fail!("Error checking padding at end of scanline");
+                      fail!("Error checking padding at end of scanline: {}", e);
                     }
                   }
                 },
@@ -746,11 +746,10 @@ impl Image {
                       }
                       else {
                         break;
-                        fail!("Error reading padding at end of scanline");
                       }
                     },
                     Err(e) => {
-                      fail!("Error checking padding at end of scanline");
+                      fail!("Error checking padding at end of scanline: {}", e);
                     }
                   }
                 },
@@ -765,21 +764,19 @@ impl Image {
                             }
                             else {
                               break;
-                              fail!("Error reading padding at end of scanline");
                             }
                           },
                           Err(e) => {
-                            fail!("Error checking padding at end of scanline");
+                            fail!("Error checking padding at end of scanline: {}", e);
                           }
                         }
                       }
                       else {
                         break;
-                        fail!("Error reading padding at end of scanline");
                       }
                     },
                     Err(e) => {
-                      fail!("Error checking padding at end of scanline");
+                      fail!("Error checking padding at end of scanline: {}", e);
                     }
                   }
                 },
@@ -807,22 +804,23 @@ impl Image {
                   Ok(mut pixel_data) => {       
                     match pixel_data.pop() {
                       Some(red) => {buffer.push(red)},
-                      None  => {fail!("Error getting red component for BMP pixel")}
+                      None  => {fail!("Error getting red component for BMP pixel at ({}, {})", x, y)}
                     }
                     match pixel_data.pop() {
                       Some(green) => {buffer.push(green)},
-                      None  => {fail!("Error getting green component for BMP pixel")}
+                      None  => {fail!("Error getting green component for BMP pixel at ({}, {})", x, y)}
                     }
                     match pixel_data.pop() {
                       Some(blue) => {buffer.push(blue)},
-                      None  => {fail!("Error getting blue component for BMP pixel")}
+                      None  => {fail!("Error getting blue component for BMP pixel at ({}, {})", x, y)}
                     }
                     match pixel_data.pop() {
                       Some(alpha) => {buffer.push(alpha)},
-                      None  => {fail!("Error getting alpha component for BMP pixel")}
+                      None  => {fail!("Error getting alpha component for BMP pixel at ({}, {})", x, y)}
                     }                    
                   },
-                  Err(e)    => {fail!("Error reading BMP pixel")}
+                  Err(e)    => {
+                    fail!("Error reading BMP pixel at ({}, {}): {}", x, y, e)}
                 }
               }
 
@@ -884,8 +882,9 @@ impl Image {
    *  - 8-bit BMPv4 doesn't work at all.
    */
 
+  // Look into updating with write! macros
   #[allow(dead_code)]
-  pub fn write_bmp(&mut self, filename: &str) -> bool {
+  fn write_image(&mut self, filename: &str) -> bool {
     let path = Path::new(filename);
     let mut file = File::create(&path);
     let mut version;
@@ -1311,7 +1310,7 @@ impl Image {
       false
     }
   }
-}*/
+}
 
 
 // Image processing traits and functions (Only for RGB8 images)
@@ -1560,23 +1559,18 @@ fn main() {
     fail!("Image path not provided");
   }
   else {
-    let image = Image::new(20, 20, RGB8);
-    let pix = image.get_pixel(0, 0);
-    println!("{}", pix);
-
-    /*
-    let image = Image::read_bmp(args[1]);
+    
+    let image: Option<Image> = BMP::read_image(args[1]);
 
     match image {
       Some(mut image) => {
-        image.write_bmp("image.bmp");
+        image.convert_to_GRAYSCALE8();
+        image.write_image("image.bmp");
       },
       None  => {
         println!("Looks like you didn't get a valid image.");
       }
-    }*/
-
-    //image.convert_to_GRAYSCALE8();
+    }
     
     
     /*for y in range(0, image.height) {
