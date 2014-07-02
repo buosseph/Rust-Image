@@ -1,5 +1,7 @@
 //extern crate time;
 
+#![allow(unused_imports)]
+#![allow(unused_variable)]
 
 use std::slice::from_elem;
 use std::path::posix::{Path};
@@ -22,30 +24,27 @@ pub struct Image {
 impl Image {
   // Updated
   #[allow(dead_code)]
-  pub fn new(width: uint, height: uint, color_type: int) -> Option<Image> {
+  pub fn new(width: uint, height: uint, color_type: ColorType) -> Image {
     match color_type {
-      8   => {
+      GRAYSCALE8   => {
         let size = width * height;
         let buffer = from_elem(size, 0u8);
-        Some(Image{width: width, height: height, color_type: GRAYSCALE8, data: buffer})        
+        Image{width: width, height: height, color_type: GRAYSCALE8, data: buffer}
       },
-      24  => {
+      RGB8         => {
         let size = 3 * width * height;
         let buffer = from_elem(size, 0u8);
-        Some(Image{width: width, height: height, color_type: RGB8, data: buffer})     
+        Image{width: width, height: height, color_type: RGB8, data: buffer}
       },
-      32  => {
+      RGBA8        => {
         let size = 4 * width * height;
         let buffer = from_elem(size, 0u8);
-        Some(Image{width: width, height: height, color_type: RGBA8, data: buffer})
-      },
-      _ => {
-        println!("Invalid color_type. Cannot create image.");
-        None
+        Image{width: width, height: height, color_type: RGBA8, data: buffer}
       }
     }
   }
 
+  // No update needed
   fn buffer_size(&self) -> uint {
     match self.color_type {
       GRAYSCALE8   => {  self.width * self.height    },
@@ -54,6 +53,7 @@ impl Image {
     }
   }
  
+  // No update needed
   fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
     match self.color_type {
       GRAYSCALE8 => {
@@ -83,6 +83,7 @@ impl Image {
     }
   }
 
+  // No update needed
   #[allow(dead_code)]
   pub fn get_pixel(&self, x: uint, y: uint) -> Vec<u8>{
     match self.color_type {
@@ -125,13 +126,14 @@ impl Image {
     }
   }
  
+  // No update needed
   #[allow(dead_code)]
   pub fn set_pixel(&mut self, x: uint, y: uint, mut color: Vec<u8>) -> bool {
     match self.color_type {
       GRAYSCALE8 => {
         match self.get_offset(x, y) {
           Some(offset) => {
-            self.data[offset] = color.pop().unwrap();
+            self.data[  offset      ] = color.pop().unwrap();
             true
           },
           None => false
@@ -306,10 +308,16 @@ impl Image {
       }
     }
   }  
+
+
+  /******** Getters ********/
+  pub fn get_width(&self) -> uint { self.width }
+  pub fn get_height(&self) -> uint { self.height }
+  pub fn get_color_type(&self) -> ColorType { self.color_type }  
 }
 
 // PPM Image format
-impl Image {  // Not complete, and may never be
+/*impl Image {  // Not complete, and may never be
   #[allow(dead_code)]
   fn read_ppm(image_path_str: &str) -> Image {
     let path = Path::new(image_path_str);
@@ -437,10 +445,10 @@ impl Image {  // Not complete, and may never be
     file.write(self.data).unwrap();
     true
   }
-}
+}*/
 
 // BMP Image format
-impl Image {
+/*impl Image {
   /* NOTES:
    * BMP pixels stored as BGR, not RGB8
    * If height is positive, scanlines stored BOTTOM UP --> store pixels starting from bottom row when writing
@@ -1303,11 +1311,11 @@ impl Image {
       false
     }
   }
-}
+}*/
 
 
 // Image processing traits and functions (Only for RGB8 images)
-trait PointProcessor {
+/*trait PointProcessor {
   fn negative(&mut self);
   fn brighten(&mut self, bias: int);
   fn contrast(&mut self, gain: f32);
@@ -1542,17 +1550,21 @@ impl ConvolutionFilter for Image {
     // let time = end as uint - start as uint;
     // println!("Time of brute force algorithm: {}", time);
   }
-}
+}*/
 
 
-
+#[allow(dead_code)]
 fn main() {
   let args = os::args();
   if args.len() < 2 {
     fail!("Image path not provided");
   }
   else {
+    let image = Image::new(20, 20, RGB8);
+    let pix = image.get_pixel(0, 0);
+    println!("{}", pix);
 
+    /*
     let image = Image::read_bmp(args[1]);
 
     match image {
@@ -1562,7 +1574,7 @@ fn main() {
       None  => {
         println!("Looks like you didn't get a valid image.");
       }
-    }
+    }*/
 
     //image.convert_to_GRAYSCALE8();
     
@@ -1592,4 +1604,57 @@ fn main() {
 
   }
 
+}
+
+
+// Use actual images to test functions
+// Testing image module
+#[test]
+fn test_image_new() {
+  let image = Image::new(4, 4, GRAYSCALE8);
+  assert_eq!(image.get_width(), 4);
+  assert_eq!(image.get_height(), 4);
+
+  let image = Image::new(20, 20, RGB8);
+  assert_eq!(image.get_width(), 20);
+  assert_eq!(image.get_height(), 20);
+
+  let image = Image::new(1000, 1000, RGB8);
+  assert_eq!(image.get_width(), 1000);
+  assert_eq!(image.get_height(), 1000);
+}
+
+#[test]
+fn test_get_empty_pixel() {
+  let image = Image::new(20, 20, GRAYSCALE8);
+  let grayscale_pixel = image.get_pixel(0, 0);
+  assert_eq!(grayscale_pixel, vec!(0));
+
+  let image = Image::new(20, 20, RGB8);
+  let rgb_pixel = image.get_pixel(0, 0);
+  assert_eq!(rgb_pixel, vec!(0,0,0));
+
+  let image = Image::new(20, 20, RGBA8);
+  let rgba_pixel = image.get_pixel(0, 0);
+  assert_eq!(rgba_pixel, vec!(0,0,0,0));
+}
+
+#[test]
+fn test_set_empty_pixel() {
+  let mut image = Image::new(20, 20, GRAYSCALE8);
+  image.set_pixel(0, 0, vec!(255));
+  let grayscale_pixel = image.get_pixel(0, 0);
+  assert_eq!(grayscale_pixel, vec!(255));
+
+  let mut image = Image::new(20, 20, RGB8);
+  image.set_pixel(0, 0, vec!(127, 54, 0));
+  let rgb_pixel = image.get_pixel(0, 0);
+  assert_eq!(rgb_pixel, vec!(127, 54, 0));
+
+  let mut image = Image::new(20, 20, RGBA8);
+  image.set_pixel(0, 0, vec!(23, 68, 144, 174));
+  let rgba_pixel = image.get_pixel(0, 0);
+  assert_eq!(rgba_pixel, vec!(23, 68, 144, 174));
+
+  // Test: randomly select a pixel from image, set it then get it to confirm
 }
