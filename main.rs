@@ -1323,7 +1323,8 @@ trait PointProcessor {
 
 impl PointProcessor for Image {
 
-  // Update for all color types
+
+  // Theta(n)
   #[allow(dead_code)]
   fn negative(&mut self) {
     // Brute force        Time: 19257397 ns
@@ -1373,7 +1374,8 @@ impl PointProcessor for Image {
     // println!("Time of vectorized algorithm: {}", time);
   }
 
-  // Update for all color types
+
+  // Theta(n)
   #[allow(dead_code)]
   fn brighten(&mut self, bias: int) {
     // Brute force        Time: 33111543 ns
@@ -1454,6 +1456,9 @@ impl PointProcessor for Image {
     // println!("Time of algorithm: {}", time);
   }
 
+
+  // Updated for all but GRAYSCALE8
+  // Theta(n^2)
   #[allow(dead_code)]
   fn contrast(&mut self, gain: f32) {
     let mut total_luminance: f32 = 0.;
@@ -1461,17 +1466,47 @@ impl PointProcessor for Image {
     for y in range(0, self.height){
       for x in range(0, self.width){
 
-        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
-        let b  = pixel_data.pop().unwrap();
-        let g  = pixel_data.pop().unwrap();
-        let r  = pixel_data.pop().unwrap();
+        match self.color_type {
+          GRAYSCALE8 => {
 
-        let red   = r as f32;
-        let green = g as f32;
-        let blue  = b as f32;
+            unimplemented!();
 
-        let luminance: f32 = 0.2126 * red  + 0.7152 * green  + 0.0722 * blue;
-        total_luminance += luminance;
+          },
+
+          RGB8 => {
+
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            let b  = pixel_data.pop().unwrap();
+            let g  = pixel_data.pop().unwrap();
+            let r  = pixel_data.pop().unwrap();
+
+            let red   = r as f32;
+            let green = g as f32;
+            let blue  = b as f32;
+
+            let luminance: f32 = 0.2126 * red  + 0.7152 * green  + 0.0722 * blue;
+            total_luminance += luminance;
+
+          },
+
+          RGBA8 => {
+
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            pixel_data.pop().unwrap();
+            let b     = pixel_data.pop().unwrap();
+            let g     = pixel_data.pop().unwrap();
+            let r     = pixel_data.pop().unwrap();
+
+            let red   = r as f32;
+            let green = g as f32;
+            let blue  = b as f32;
+
+            let luminance: f32 = 0.2126 * red  + 0.7152 * green  + 0.0722 * blue;
+            total_luminance += luminance;
+
+          }
+        }
+
       }
     }
 
@@ -1480,75 +1515,174 @@ impl PointProcessor for Image {
     for y in range(0, self.height){
       for x in range(0, self.width){
 
-        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
-        let b  = pixel_data.pop().unwrap();
-        let g  = pixel_data.pop().unwrap();
-        let r  = pixel_data.pop().unwrap();
+        match self.color_type {
+          GRAYSCALE8 => {
 
-        let mut red     = r as int;
-        let mut green   = g as int;
-        let mut blue    = b as int;
+            unimplemented!();
 
-        let dRed: f32 = red as f32 - mean_luminance;
-        let dGreen: f32 = green as f32 - mean_luminance;
-        let dBlue: f32 = blue as f32 - mean_luminance;
+          },
 
-        red     = (red as f32 - dRed * (1. - gain)) as int;
-        green   = (green as f32 - dGreen * (1. - gain)) as int;
-        blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+          RGB8 => {
 
-        if red > 255 {red = 255;}
-        if green > 255 {green = 255;}
-        if blue > 255 {blue = 255;}
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
 
-        if red < 0 {red = 0;}
-        if green < 0 {green = 0;}
-        if blue < 0 {blue = 0;}
-        
-        let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
-        self.set_pixel(x,y, pixel_data);
+            let b  = pixel_data.pop().unwrap();
+            let g  = pixel_data.pop().unwrap();
+            let r  = pixel_data.pop().unwrap();
+
+            let mut red     = r as int;
+            let mut green   = g as int;
+            let mut blue    = b as int;
+
+            let dRed: f32 = red as f32 - mean_luminance;
+            let dGreen: f32 = green as f32 - mean_luminance;
+            let dBlue: f32 = blue as f32 - mean_luminance;
+
+            red     = (red as f32 - dRed * (1. - gain)) as int;
+            green   = (green as f32 - dGreen * (1. - gain)) as int;
+            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
+            self.set_pixel(x,y, pixel_data);
+
+          },
+
+          RGBA8 => {
+
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            let alpha = pixel_data.pop().unwrap();
+            let b     = pixel_data.pop().unwrap();
+            let g     = pixel_data.pop().unwrap();
+            let r     = pixel_data.pop().unwrap();
+
+            let mut red     = r as int;
+            let mut green   = g as int;
+            let mut blue    = b as int;
+
+            let dRed: f32 = red as f32 - mean_luminance;
+            let dGreen: f32 = green as f32 - mean_luminance;
+            let dBlue: f32 = blue as f32 - mean_luminance;
+
+            red     = (red as f32 - dRed * (1. - gain)) as int;
+            green   = (green as f32 - dGreen * (1. - gain)) as int;
+            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8, alpha as u8);
+            self.set_pixel(x,y, pixel_data);
+
+          }
+        }
+
+
 
       }
     }
   }
 
+
+  // Updated for all but GRAYSCALE8
+  // Theta(n)
   #[allow(dead_code)]
   fn saturate(&mut self, gain: f32) {
     for y in range(0, self.height){
       for x in range(0, self.width){
 
-        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
-        let b  = pixel_data.pop().unwrap();
-        let g  = pixel_data.pop().unwrap();
-        let r  = pixel_data.pop().unwrap();
+        match self.color_type {
+          GRAYSCALE8 => {
 
-        let mut red     = r as int;
-        let mut green   = g as int;
-        let mut blue    = b as int;
+            unimplemented!();
 
-        let luminance: f32 = 0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32;
-        let dRed: f32 = red as f32 - luminance;
-        let dGreen: f32 = green as f32 - luminance;
-        let dBlue: f32 = blue as f32 - luminance;
+          },
 
-        red     = (red as f32 - dRed * (1. - gain)) as int;
-        green   = (green as f32 - dGreen * (1. - gain)) as int;
-        blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+          RGB8 => {
 
-        if red > 255 {red = 255;}
-        if green > 255 {green = 255;}
-        if blue > 255 {blue = 255;}
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            let b  = pixel_data.pop().unwrap();
+            let g  = pixel_data.pop().unwrap();
+            let r  = pixel_data.pop().unwrap();
 
-        if red < 0 {red = 0;}
-        if green < 0 {green = 0;}
-        if blue < 0 {blue = 0;}
-        
-        let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
-        self.set_pixel(x,y, pixel_data);
+            let mut red     = r as int;
+            let mut green   = g as int;
+            let mut blue    = b as int;
+
+            let luminance: f32 = 0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32;
+            let dRed: f32 = red as f32 - luminance;
+            let dGreen: f32 = green as f32 - luminance;
+            let dBlue: f32 = blue as f32 - luminance;
+
+            red     = (red as f32 - dRed * (1. - gain)) as int;
+            green   = (green as f32 - dGreen * (1. - gain)) as int;
+            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
+            self.set_pixel(x,y, pixel_data);
+
+          },
+
+          RGBA8 => {
+
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            let alpha = pixel_data.pop().unwrap();
+            let b     = pixel_data.pop().unwrap();
+            let g     = pixel_data.pop().unwrap();
+            let r     = pixel_data.pop().unwrap();
+
+            let mut red     = r as int;
+            let mut green   = g as int;
+            let mut blue    = b as int;
+
+            let luminance: f32 = 0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32;
+            let dRed: f32 = red as f32 - luminance;
+            let dGreen: f32 = green as f32 - luminance;
+            let dBlue: f32 = blue as f32 - luminance;
+
+            red     = (red as f32 - dRed * (1. - gain)) as int;
+            green   = (green as f32 - dGreen * (1. - gain)) as int;
+            blue    = (blue as f32 - dBlue * (1. - gain)) as int;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8, alpha as u8);
+            self.set_pixel(x,y, pixel_data);
+
+          }
+        }
 
       }
     }
   }
+
+
 }
 
 trait ConvolutionFilter {
@@ -1556,6 +1690,8 @@ trait ConvolutionFilter {
 }
 
 impl ConvolutionFilter for Image {
+
+  // Theta(n)
   #[allow(dead_code)]
   fn blur(&mut self) {
     // Brute force        Time: 264835676 ns
@@ -1566,59 +1702,174 @@ impl ConvolutionFilter for Image {
     let kernel_center_x: uint = 3/2;
     let kernel_center_y: uint = 3/2;
 
-    for x in range(0, self.width){
-      for y in range(0, self.height){
 
-        let mut red_sum = 0;
-        let mut green_sum = 0;
-        let mut blue_sum = 0;
+    match self.color_type {
 
-        for kernel_row in range(0, 3){
-          for kernel_column in range(0, 3){
+      GRAYSCALE8 => {
 
-            let kx: int = kernel_row - (kernel_center_y - x) as int;
-            let ky: int = kernel_column - (kernel_center_x - y) as int;
+        for x in range(0, self.width){
+          for y in range(0, self.height){
 
-            if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
+            let mut lum_sum = 0;
 
-              let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
+            for kernel_row in range(0, 3){
+              for kernel_column in range(0, 3){
 
-              let mut pixel_data: Vec<u8> = self.get_pixel(kx as uint , ky as uint);
-              let b  = pixel_data.pop().unwrap();
-              let g  = pixel_data.pop().unwrap();
-              let r  = pixel_data.pop().unwrap();
+                let kx: int = kernel_row - (kernel_center_y - x) as int;
+                let ky: int = kernel_column - (kernel_center_x - y) as int;
 
-              red_sum   += r as int * kernel_value;
-              green_sum += g as int * kernel_value;
-              blue_sum  += b as int * kernel_value;              
+                if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
 
-            }  
+                  let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
 
+                  let mut pixel_data: Vec<u8> = self.get_pixel(kx as uint , ky as uint);
+                  let l  = pixel_data.pop().unwrap();
+
+                  lum_sum   += l as int * kernel_value;            
+
+                }  
+
+              }
+            }
+
+            lum_sum = lum_sum/kernel_sum;
+
+            if lum_sum > 255 {lum_sum = 255;}
+
+            if lum_sum < 0 {lum_sum = 0;}
+
+            let pixel_data: Vec<u8> = vec!(lum_sum as u8);
+            self.set_pixel(x as uint,y as uint, pixel_data);
+            
           }
         }
 
-        red_sum = red_sum/kernel_sum;
-        green_sum = green_sum/kernel_sum;
-        blue_sum = blue_sum/kernel_sum;
+      },
 
-        if red_sum > 255 {red_sum = 255;}
-        if green_sum > 255 {green_sum = 255;}
-        if blue_sum > 255 {blue_sum = 255;}
+      RGB8 => {
 
-        if red_sum < 0 {red_sum = 0;}
-        if green_sum < 0 {green_sum = 0;}
-        if blue_sum < 0 {blue_sum = 0;}
+        for x in range(0, self.width){
+          for y in range(0, self.height){
 
-        let pixel_data: Vec<u8> = vec!(red_sum as u8, green_sum as u8, blue_sum as u8);
-        self.set_pixel(x as uint,y as uint, pixel_data);
-        
+            let mut red_sum = 0;
+            let mut green_sum = 0;
+            let mut blue_sum = 0;
+
+            for kernel_row in range(0, 3){
+              for kernel_column in range(0, 3){
+
+                let kx: int = kernel_row - (kernel_center_y - x) as int;
+                let ky: int = kernel_column - (kernel_center_x - y) as int;
+
+                if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
+
+                  let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
+
+                  let mut pixel_data: Vec<u8> = self.get_pixel(kx as uint , ky as uint);
+                  let b  = pixel_data.pop().unwrap();
+                  let g  = pixel_data.pop().unwrap();
+                  let r  = pixel_data.pop().unwrap();
+
+                  red_sum   += r as int * kernel_value;
+                  green_sum += g as int * kernel_value;
+                  blue_sum  += b as int * kernel_value;              
+
+                }  
+
+              }
+            }
+
+            red_sum = red_sum/kernel_sum;
+            green_sum = green_sum/kernel_sum;
+            blue_sum = blue_sum/kernel_sum;
+
+            if red_sum > 255 {red_sum = 255;}
+            if green_sum > 255 {green_sum = 255;}
+            if blue_sum > 255 {blue_sum = 255;}
+
+            if red_sum < 0 {red_sum = 0;}
+            if green_sum < 0 {green_sum = 0;}
+            if blue_sum < 0 {blue_sum = 0;}
+
+            let pixel_data: Vec<u8> = vec!(red_sum as u8, green_sum as u8, blue_sum as u8);
+            self.set_pixel(x as uint,y as uint, pixel_data);
+            
+          }
+        }
+
+      },
+
+      RGBA8 => {
+
+        for x in range(0, self.width){
+          for y in range(0, self.height){
+
+            let mut red_sum = 0;
+            let mut green_sum = 0;
+            let mut blue_sum = 0;
+            let mut center_alpha = 0;
+
+            for kernel_row in range(0, 3){
+              for kernel_column in range(0, 3){
+
+                let kx: int = kernel_row - (kernel_center_y - x) as int;
+                let ky: int = kernel_column - (kernel_center_x - y) as int;
+
+                if kx >= 0 && kx < (self.width as int) && ky >= 0 && ky < (self.height as int){
+
+                  let kernel_value = kernel[kernel_row as uint][kernel_column as uint];
+
+                  let mut pixel_data: Vec<u8> = self.get_pixel(kx as uint , ky as uint);
+                  
+                  if kernel_row == kernel_center_x as int && kernel_column == kernel_center_y as int {
+                    center_alpha = pixel_data.pop().unwrap();
+                  }
+                  else {
+                    pixel_data.pop().unwrap();
+                  }
+
+
+                  let b  = pixel_data.pop().unwrap();
+                  let g  = pixel_data.pop().unwrap();
+                  let r  = pixel_data.pop().unwrap();
+
+                  red_sum   += r as int * kernel_value;
+                  green_sum += g as int * kernel_value;
+                  blue_sum  += b as int * kernel_value;              
+
+                }  
+
+              }
+            }
+
+            red_sum = red_sum/kernel_sum;
+            green_sum = green_sum/kernel_sum;
+            blue_sum = blue_sum/kernel_sum;
+
+            if red_sum > 255 {red_sum = 255;}
+            if green_sum > 255 {green_sum = 255;}
+            if blue_sum > 255 {blue_sum = 255;}
+
+            if red_sum < 0 {red_sum = 0;}
+            if green_sum < 0 {green_sum = 0;}
+            if blue_sum < 0 {blue_sum = 0;}
+
+            let pixel_data: Vec<u8> = vec!(red_sum as u8, green_sum as u8, blue_sum as u8, center_alpha as u8);
+            self.set_pixel(x as uint,y as uint, pixel_data);
+            
+          }
+        }
+
       }
     }
+
 
     // let end = time::precise_time_ns();
     // let time = end as uint - start as uint;
     // println!("Time of brute force algorithm: {}", time);
   }
+
+
 }
 
 
@@ -1634,7 +1885,7 @@ fn main() {
 
     match image {
       Some(mut image) => {
-        image.brighten(10);
+        image.blur();
         image.write_image("image.bmp");
       },
       None  => {
