@@ -1313,74 +1313,142 @@ impl BMP for Image {
 }
 
 
-// Image processing traits and functions (Only for RGB8 images)
-/*trait PointProcessor {
+// Image processing traits and functions (Not implemented for all color types)
+trait PointProcessor {
   fn negative(&mut self);
   fn brighten(&mut self, bias: int);
   fn contrast(&mut self, gain: f32);
   fn saturate(&mut self, gain: f32);
 }
+
 impl PointProcessor for Image {
 
+  // Update for all color types
   #[allow(dead_code)]
   fn negative(&mut self) {
     // Brute force        Time: 19257397 ns
     // Vectorize by 8     Time:  5118442 ns
     //let start = time::precise_time_ns();
+
+
     let mut i = 0;
     let length = self.data.len();
     let remainder = length % 8;
     let difference = length - remainder;
-    while i < difference {
-      self.data[i] = 255 - self.data[i];
-      self.data[i+1] = 255 - self.data[i+1];
-      self.data[i+2] = 255 - self.data[i+2];
-      self.data[i+3] = 255 - self.data[i+3];
-      self.data[i+4] = 255 - self.data[i+4];
-      self.data[i+5] = 255 - self.data[i+5];
-      self.data[i+6] = 255 - self.data[i+6];
-      self.data[i+7] = 255 - self.data[i+7];
-      i += 8;
-    }
-    if remainder > 0 {
-      for i in range(difference, length) {
-        self.data[i] = 255 - self.data[i];
+
+    match self.color_type {
+      RGBA8 => {
+        while i < length {
+          self.data[i] = 255 - self.data[i];
+          self.data[i+1] = 255 - self.data[i+1];
+          self.data[i+2] = 255 - self.data[i+2];
+
+          i += 4;
+        }
+      },
+
+      _ => {
+        while i < difference {
+          self.data[i] = 255 - self.data[i];
+          self.data[i+1] = 255 - self.data[i+1];
+          self.data[i+2] = 255 - self.data[i+2];
+          self.data[i+3] = 255 - self.data[i+3];
+          self.data[i+4] = 255 - self.data[i+4];
+          self.data[i+5] = 255 - self.data[i+5];
+          self.data[i+6] = 255 - self.data[i+6];
+          self.data[i+7] = 255 - self.data[i+7];
+          i += 8;
+        }
+        if remainder > 0 {
+          for i in range(difference, length) {
+            self.data[i] = 255 - self.data[i];
+          }
+        }      
       }
     }
+
+
     // let end = time::precise_time_ns();
     // let time = end as uint - start as uint;
     // println!("Time of vectorized algorithm: {}", time);
   }
 
+  // Update for all color types
   #[allow(dead_code)]
   fn brighten(&mut self, bias: int) {
     // Brute force        Time: 33111543 ns
     // let start = time::precise_time_ns();
+
     for y in range(0, self.height){
       for x in range(0, self.width){
 
-        let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
-        let b  = pixel_data.pop().unwrap();
-        let g  = pixel_data.pop().unwrap();
-        let r  = pixel_data.pop().unwrap();
+        match self.color_type {
+          GRAYSCALE8 => {
 
-        let mut red   = r as int + bias;
-        let mut green = g as int + bias;
-        let mut blue  = b as int + bias;
+            let offset:  uint = x + self.width * y;
+            let pixel_data: u8 = self.data[offset];
 
-        if red > 255 {red = 255;}
-        if green > 255 {green = 255;}
-        if blue > 255 {blue = 255;}
+            let mut lum = pixel_data as int + bias;
 
-        if red < 0 {red = 0;}
-        if green < 0 {green = 0;}
-        if blue < 0 {blue = 0;}
-        
-        let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
-        self.set_pixel(x,y, pixel_data);
+            if lum > 255 {lum = 255;}
+            if lum < 0 {lum = 0;}
+
+            self.data[offset] = lum as u8;
+
+          },
+          RGB8 => {
+
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            let b  = pixel_data.pop().unwrap();
+            let g  = pixel_data.pop().unwrap();
+            let r  = pixel_data.pop().unwrap();
+
+            let mut red   = r as int + bias;
+            let mut green = g as int + bias;
+            let mut blue  = b as int + bias;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8);
+            self.set_pixel(x,y, pixel_data);
+
+          },
+          RGBA8 => {
+
+            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+            let alpha   = pixel_data.pop().unwrap();
+            let b       = pixel_data.pop().unwrap();
+            let g       = pixel_data.pop().unwrap();
+            let r       = pixel_data.pop().unwrap();
+
+            let mut red   = r as int + bias;
+            let mut green = g as int + bias;
+            let mut blue  = b as int + bias;
+
+            if red > 255 {red = 255;}
+            if green > 255 {green = 255;}
+            if blue > 255 {blue = 255;}
+
+            if red < 0 {red = 0;}
+            if green < 0 {green = 0;}
+            if blue < 0 {blue = 0;}
+            
+            let pixel_data: Vec<u8> = vec!(red as u8, green as u8, blue as u8, alpha as u8);
+            self.set_pixel(x,y, pixel_data);
+
+          }
+        }
+
 
       }
     }
+
     // let end = time::precise_time_ns();
     // let time = end as uint - start as uint;
     // println!("Time of algorithm: {}", time);
@@ -1482,9 +1550,11 @@ impl PointProcessor for Image {
     }
   }
 }
+
 trait ConvolutionFilter {
   fn blur(&mut self);
 }
+
 impl ConvolutionFilter for Image {
   #[allow(dead_code)]
   fn blur(&mut self) {
@@ -1549,7 +1619,7 @@ impl ConvolutionFilter for Image {
     // let time = end as uint - start as uint;
     // println!("Time of brute force algorithm: {}", time);
   }
-}*/
+}
 
 
 #[allow(dead_code)]
@@ -1564,7 +1634,7 @@ fn main() {
 
     match image {
       Some(mut image) => {
-        image.convert_to_GRAYSCALE8();
+        image.brighten(10);
         image.write_image("image.bmp");
       },
       None  => {
