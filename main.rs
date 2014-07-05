@@ -1,7 +1,7 @@
 //extern crate time;
 
 #![allow(unused_imports)]
-
+#![feature(globs)]
 
 use std::slice::from_elem;
 use std::path::posix::{Path};
@@ -10,17 +10,20 @@ use std::os;
 use std::str;
 use std::uint;
 
+
 pub enum ColorType {
   GRAYSCALE8 = 8,
   RGB8 = 24,
   RGBA8 = 32,
 }
+
 pub struct Image {
   width: uint,
   height: uint,
   color_type: ColorType,
   data: ~[u8],
 }
+
 impl Image {
 
   #[allow(dead_code)]
@@ -314,143 +317,16 @@ impl Image {
   pub fn get_color_type(&self) -> ColorType { self.color_type }  
 }
 
-// PPM Image format
-/*impl Image {  // Not complete, and may never be
-  #[allow(dead_code)]
-  fn read_ppm(image_path_str: &str) -> Image {
-    let path = Path::new(image_path_str);
-
-    let mut p_num: ~[u8] = ~[0 as u8, 0 as u8];
-    let mut comment_bytes: ~[u8] = ~[];
-    let mut width_bytes: ~[u8] = ~[];
-    let mut height_bytes: ~[u8] = ~[];
-    let mut color_mode_bytes: ~[u8] = ~[];
-    let mut image_data_bytes: ~[u8] = ~[];
-
-    match File::open(&path) {
-      Ok(mut image) => {
-        // Find P Number
-        match image.read(p_num) {
-          Ok(num_of_bytes) =>  {
-            // Works, to view hex in array need to iterate and println!("{:x}")
-            // for i in range(0, p_num.len()) {
-            //   let byte = p_num[i];
-            //   println!("{:x}", byte);
-            // }
-            match str::from_utf8(p_num) {
-              Some(file_type)  => {
-                // Check if valid header
-              },    
-              None        => {fail!("Something went wrong reading the file type")}
-            }
-          },
-          Err(e) => {println!("Something went wrong: {}", e)}
-        }
-
-        // Getting header data
-        let mut isComment: bool = false;
-        let mut isWidth: bool = false;
-        let mut isHeight: bool = false;
-        let mut isColorMode: bool = false;
-        loop {
-          match image.read_byte() {
-            Ok(byte) =>  {
-              let byte_string = str::from_byte(byte);
-
-              // Checking for comment
-              if str::eq(&byte_string, &~"#") {
-                isComment = true;
-              }
-              if isComment && str::eq(&byte_string, &~"\n") {
-                comment_bytes.push(byte);
-                isComment = false;
-                isWidth = true;
-                continue;
-              }
-              if isComment {
-                comment_bytes.push(byte);
-              }
-            
-              // Read width, ends at space or newline
-              if isWidth && (str::eq(&byte_string, &~"\n") || str::eq(&byte_string, &~" ")){
-                isWidth = false;
-                isHeight = true;
-                continue;
-              }
-              if isWidth {
-                width_bytes.push(byte);
-              }
-
-              // Read height, ends at space or newline
-              if isHeight && (str::eq(&byte_string, &~"\n") || str::eq(&byte_string, &~" ")) {
-                isHeight = false;
-                isColorMode = true;
-                continue;
-              }
-              if isHeight {
-                height_bytes.push(byte);
-              }
-
-              // Read color mode
-              if isColorMode && (str::eq(&byte_string, &~"\n") || str::eq(&byte_string, &~" ")) {
-                isColorMode = false;
-                break;
-              }
-              if isColorMode {
-                color_mode_bytes.push(byte);
-              }
-
-              if str::eq(&byte_string, &~"\n") {
-                continue;
-              }
-            },
-
-            Err(e) => {
-              println!("Error reading file header: {}", e);
-              break;
-            }
-          }
-        }
-        // Would want a more appropriate way of filling image_data_bytes
-        loop {
-          match image.read_byte() {
-            Ok(byte) => {image_data_bytes.push(byte)},
-            Err(e)   => {break;}
-          }
-        }
-      },
-      Err(e)    => {println!("Error opening file: {}", e)}
-    };
-
-    let mut width = match uint::parse_bytes(width_bytes, 10){
-      Some(number) => {number},
-      None    => {0 as uint}
-    };
-    let mut height = match uint::parse_bytes(height_bytes, 10){
-      Some(number) => {number},
-      None    => {0 as uint}
-    };
-    // Only testing color images
-    Image{width: width, height: height, color_type: RGB8, data: image_data_bytes}
-  }
-
-  #[allow(dead_code)]
-  fn write_ppm(&self, filename: &str) -> bool {
-    let path = Path::new(filename);
-    let mut file = File::create(&path);
-    let header = format!("P6 {} {} 255\n", self.width, self.height);
-    file.write(header.as_bytes()).unwrap();
-    file.write(self.data).unwrap();
-    true
-  }
-}*/
 
 // BMP Image format
-trait BMP {
-  fn read_image(image_path_str: &str) -> Option<Self>;
+/*trait BMP {
+  fn read_image(image_path_str: &str) -> Option<Image>;
   fn write_image(&mut self, filename: &str) -> bool;
-}
-impl BMP for Image {
+}*/
+
+// Compiler cannot infer return type when implementing BMP trait
+impl Image {
+
   /* NOTES:
    * BMP pixels stored as BGR, not RGB8
    * If height is positive, scanlines stored BOTTOM UP --> store pixels starting from bottom row when writing
@@ -468,9 +344,10 @@ impl BMP for Image {
   #[allow(dead_code)]
   #[allow(unused_variable)]
   #[allow(dead_assignment)]
-  fn read_image(image_path_str: &str) -> Option<Image>{
-    let path = Path::new(image_path_str);
+  fn read_bitmap(image_path_str: &str) -> Option<Image>{
 
+
+    let path = Path::new(image_path_str);
 
     let mut signature: ~[u8] = ~[0 as u8, 0 as u8];
     let mut file_size: u32 = 0 as u32;      
@@ -860,7 +737,6 @@ impl BMP for Image {
     }
 
 
-    // GRAYSCALE8 not properly implemented yet, saved as RGB8
     if bits_per_pixel == 8 {
       Some(Image{width: image_width as uint, height: image_height as uint, color_type: GRAYSCALE8, data: image_data_bytes})
     }
@@ -874,6 +750,8 @@ impl BMP for Image {
       println!("Error writing image as valid colorspace");
       None
     }
+
+
   }
 
   /* Writer Status: 
@@ -884,7 +762,9 @@ impl BMP for Image {
 
   // Look into updating with write! macros
   #[allow(dead_code)]
-  fn write_image(&mut self, filename: &str) -> bool {
+  fn write_bitmap(&mut self, filename: &str) -> bool {
+
+
     let path = Path::new(filename);
     let mut file = File::create(&path);
     let mut version;
@@ -1002,6 +882,7 @@ impl BMP for Image {
         _ => {false}
       }
     }
+
 
     // Save as BMP 4.x
     else if version == 4 {
@@ -1228,6 +1109,8 @@ impl BMP for Image {
         _ => {false},
       }
     }
+
+
     // Save as BMP 3.x
     else if version == 3 {
       /* Total filesize in bytes (File header guaranteed 14 bytes)
@@ -1306,12 +1189,16 @@ impl BMP for Image {
       }
       true
     }
+
+
     else {
       false
     }
-  }
-}
 
+
+  }
+
+}
 
 // Image processing traits and functions (Not implemented for all color types)
 trait PointProcessor {
@@ -1322,7 +1209,6 @@ trait PointProcessor {
 }
 
 impl PointProcessor for Image {
-
 
   // Theta(n)
   #[allow(dead_code)]
@@ -1682,7 +1568,6 @@ impl PointProcessor for Image {
     }
   }
 
-
 }
 
 trait ConvolutionFilter {
@@ -1869,7 +1754,6 @@ impl ConvolutionFilter for Image {
     // println!("Time of brute force algorithm: {}", time);
   }
 
-
 }
 
 
@@ -1880,13 +1764,13 @@ fn main() {
     fail!("Image path not provided");
   }
   else {
-    
-    let image: Option<Image> = BMP::read_image(args[1]);
+
+    let image = Image::read_bitmap(args[1]);
 
     match image {
       Some(mut image) => {
         image.blur();
-        image.write_image("image.bmp");
+        image.write_bitmap("image.bmp");
       },
       None  => {
         println!("Looks like you didn't get a valid image.");

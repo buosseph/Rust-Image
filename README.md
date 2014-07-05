@@ -16,14 +16,14 @@ let empty_rgba_image = Image::new(540, 720, RGBA8);
 </pre>
 
 
-Decoding stored image by providing a valid file path.
+Decoding stored bitmap image by providing a valid file path.
 <pre>
-let image: Option<Image> = BMP::read_image("path/to/imagefile.bmp");
+let image = Image::read_bitmap("path/to/imagefile.bmp");
 
 match image {
   Some(mut image) => {
     // Some image processing
-    image.write_image("path/to/save/imagefile.bmp");
+    image.write_bitmap("path/to/save/imagefile.bmp");
   },
   None  => {
     println!("Looks like you didn't get a valid image.");
