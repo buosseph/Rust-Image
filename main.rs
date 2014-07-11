@@ -8,345 +8,351 @@ use std::io::File;
 use std::os;
 use std::str;
 use std::uint;
+use image::*;
 
 #[allow(dead_code)]
 static version: &'static str = "rustc 0.11.0-pre-nightly (380657557cb3793d39dfc0d2321fc946cb3496f5 2014-07-02 00:21:36 +0000)";
 
 
-pub enum ColorType {
-  GRAYSCALE8 = 8,
-  RGB8 = 24,
-  RGBA8 = 32,
-}
-
-pub struct Image {
-  width: uint,
-  height: uint,
-  color_type: ColorType,
-  data: Vec<u8>,
-}
-
-impl Image {
-
-  #[allow(dead_code)]
-  pub fn new(width: uint, height: uint, color_type: ColorType) -> Image {
-    match color_type {
-
-      GRAYSCALE8   => {
-        let size: uint = width * height;
-        let buffer: Vec<u8> = Vec::from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: GRAYSCALE8, data: buffer}
-      },
-
-      RGB8         => {
-        let size: uint = 3 * width * height;
-        let buffer: Vec<u8> = Vec::from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: RGB8, data: buffer}
-      },
-
-      RGBA8        => {
-        let size: uint = 4 * width * height;
-        let buffer: Vec<u8> = Vec::from_elem(size, 0u8);
-        Image{width: width, height: height, color_type: RGBA8, data: buffer}
-      }
-
-    }
+mod image {
+  pub enum ColorType {
+    GRAYSCALE8 = 8,
+    RGB8 = 24,
+    RGBA8 = 32,
   }
 
-  fn buffer_size(&self) -> uint {
-    match self.color_type {
-      GRAYSCALE8   => { self.width * self.height     },
-      RGB8         => { self.width * self.height * 3 },
-      RGBA8        => { self.width * self.height * 4 }
-    }
+  pub struct Image {
+    width: uint,
+    height: uint,
+    color_type: ColorType,
+    data: Vec<u8>,
   }
- 
-  fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
-    match self.color_type {
 
-      GRAYSCALE8 => {
-        let offset: uint = x + self.width * y;
-        if offset < self.buffer_size() {
-          Some(offset)
-        }else{
-          None
-        }        
-      },
+  impl Image {
 
-      RGB8 => {
-        let offset: uint = (x + self.width * y) * 3;
-        if offset < self.buffer_size() {
-          Some(offset)
-        }else{
-          None
+    #[allow(dead_code)]
+    pub fn new(width: uint, height: uint, color_type: ColorType) -> Image {
+      match color_type {
+
+        GRAYSCALE8   => {
+          let size: uint = width * height;
+          let buffer: Vec<u8> = Vec::from_elem(size, 0u8);
+          Image{width: width, height: height, color_type: GRAYSCALE8, data: buffer}
+        },
+
+        RGB8         => {
+          let size: uint = 3 * width * height;
+          let buffer: Vec<u8> = Vec::from_elem(size, 0u8);
+          Image{width: width, height: height, color_type: RGB8, data: buffer}
+        },
+
+        RGBA8        => {
+          let size: uint = 4 * width * height;
+          let buffer: Vec<u8> = Vec::from_elem(size, 0u8);
+          Image{width: width, height: height, color_type: RGBA8, data: buffer}
         }
-      },
 
-      RGBA8 => {
-        let offset: uint = (x + self.width * y) * 4;
-        if offset < self.buffer_size() {
-          Some(offset)
-        }else{
-          None
-        }        
       }
-
     }
-  }
 
-  pub fn width(&self) -> uint { self.width }
-  
-  pub fn height(&self) -> uint { self.height }
-
-  pub fn color_type(&self) -> ColorType { self.color_type }  
-
-  #[allow(dead_code)]
-  pub fn get_pixel(&self, x: uint, y: uint) -> Vec<u8>{
-    match self.color_type {
-
-      GRAYSCALE8 => {
-        match self.get_offset(x, y) {
-          Some(offset) => {
-            let pixel_data: Vec<u8> = vec!(self.data.get(offset).clone());
-            pixel_data
-          },
-          None => {fail!("Couldn't get GRAYSCALE8 pixel")}
-        }        
-      },
-
-      RGB8 => {
-        match self.get_offset(x, y) {
-          Some(offset) => {
-            let pixel_data: Vec<u8> = vec!(
-              self.data.get(offset).clone(),
-              self.data.get(offset + 1).clone(),
-              self.data.get(offset + 2).clone()
-              );
-            pixel_data
-          },
-          None => {fail!("Couldn't get RGB8 pixel")}
-        }
-      },
-
-      RGBA8 => {
-        match self.get_offset(x, y) {
-          Some(offset) => {
-            let pixel_data: Vec<u8> = vec!(
-              self.data.get(offset).clone(),
-              self.data.get(offset + 1).clone(),
-              self.data.get(offset + 2).clone(),
-              self.data.get(offset + 3).clone()
-              );
-            pixel_data
-          },
-          None => {fail!("Couldn't get RGBA8 pixel")}
-        }        
+    fn buffer_size(&self) -> uint {
+      match self.color_type {
+        GRAYSCALE8   => { self.width * self.height     },
+        RGB8         => { self.width * self.height * 3 },
+        RGBA8        => { self.width * self.height * 4 }
       }
-
     }
-  }
- 
-  #[allow(dead_code)]
-  pub fn set_pixel(&mut self, x: uint, y: uint, mut color: Vec<u8>) -> bool {
-    match self.color_type {
+   
+    fn get_offset(&self, x: uint, y: uint) -> Option<uint> {
+      match self.color_type {
 
-      GRAYSCALE8 => {
-        match self.get_offset(x, y) {
-          Some(offset) => {
-            *self.data.get_mut(offset) = color.pop().unwrap();
-            true
-          },
-          None => false
-        }           
-      },
+        GRAYSCALE8 => {
+          let offset: uint = x + self.width * y;
+          if offset < self.buffer_size() {
+            Some(offset)
+          }else{
+            None
+          }        
+        },
 
-      RGB8 => {
-        match self.get_offset(x, y) {
-          Some(offset) => {
-            *self.data.get_mut(offset + 2)  = color.pop().unwrap();
-            *self.data.get_mut(offset + 1)  = color.pop().unwrap();
-            *self.data.get_mut(offset)      = color.pop().unwrap();
-            true
-          },
-          None => false
+        RGB8 => {
+          let offset: uint = (x + self.width * y) * 3;
+          if offset < self.buffer_size() {
+            Some(offset)
+          }else{
+            None
+          }
+        },
+
+        RGBA8 => {
+          let offset: uint = (x + self.width * y) * 4;
+          if offset < self.buffer_size() {
+            Some(offset)
+          }else{
+            None
+          }        
         }
-      },
 
-      RGBA8 => {
-        match self.get_offset(x, y) {
-          Some(offset) => {
-            *self.data.get_mut(offset + 3)  = color.pop().unwrap();
-            *self.data.get_mut(offset + 2)  = color.pop().unwrap();
-            *self.data.get_mut(offset + 1)  = color.pop().unwrap();
-            *self.data.get_mut(offset)      = color.pop().unwrap();
-            true
-          },
-          None => false
-        }
       }
-
     }
-  }
 
-  #[allow(dead_code)]
-  pub fn convert_to_grayscale8(&mut self) -> bool {
-    match self.color_type {
+    #[allow(dead_code)]
+    pub fn width(&self) -> uint { self.width }
+    
+    #[allow(dead_code)]
+    pub fn height(&self) -> uint { self.height }
 
-      GRAYSCALE8 => {
-        println!("Image already GRAYSCALE8");
-        return true
-      },
+    #[allow(dead_code)]
+    pub fn color_type(&self) -> ColorType { self.color_type }  
 
-      RGB8      => {
-        let mut new_pixel_array: Vec<u8> = Vec::new();
-        for y in range(0, self.height){
-          for x in range(0, self.width){
-            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
-            let b  = pixel_data.pop().unwrap();
-            let g  = pixel_data.pop().unwrap();
-            let r  = pixel_data.pop().unwrap();
+    #[allow(dead_code)]
+    pub fn get_pixel(&self, x: uint, y: uint) -> Vec<u8>{
+      match self.color_type {
 
-            let red     = r as int;
-            let green   = g as int;
-            let blue    = b as int;
+        GRAYSCALE8 => {
+          match self.get_offset(x, y) {
+            Some(offset) => {
+              let pixel_data: Vec<u8> = vec!(self.data.get(offset).clone());
+              pixel_data
+            },
+            None => {fail!("Couldn't get GRAYSCALE8 pixel")}
+          }        
+        },
 
-            let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
-            if luminance < 0 {
-              luminance = 0;
-            }
-            if luminance > 255 {
-              luminance = 255;
-            }
+        RGB8 => {
+          match self.get_offset(x, y) {
+            Some(offset) => {
+              let pixel_data: Vec<u8> = vec!(
+                self.data.get(offset).clone(),
+                self.data.get(offset + 1).clone(),
+                self.data.get(offset + 2).clone()
+                );
+              pixel_data
+            },
+            None => {fail!("Couldn't get RGB8 pixel")}
+          }
+        },
 
-            new_pixel_array.push(luminance as u8);
+        RGBA8 => {
+          match self.get_offset(x, y) {
+            Some(offset) => {
+              let pixel_data: Vec<u8> = vec!(
+                self.data.get(offset).clone(),
+                self.data.get(offset + 1).clone(),
+                self.data.get(offset + 2).clone(),
+                self.data.get(offset + 3).clone()
+                );
+              pixel_data
+            },
+            None => {fail!("Couldn't get RGBA8 pixel")}
+          }        
+        }
+
+      }
+    }
+   
+    #[allow(dead_code)]
+    pub fn set_pixel(&mut self, x: uint, y: uint, mut color: Vec<u8>) -> bool {
+      match self.color_type {
+
+        GRAYSCALE8 => {
+          match self.get_offset(x, y) {
+            Some(offset) => {
+              *self.data.get_mut(offset) = color.pop().unwrap();
+              true
+            },
+            None => false
+          }           
+        },
+
+        RGB8 => {
+          match self.get_offset(x, y) {
+            Some(offset) => {
+              *self.data.get_mut(offset + 2)  = color.pop().unwrap();
+              *self.data.get_mut(offset + 1)  = color.pop().unwrap();
+              *self.data.get_mut(offset)      = color.pop().unwrap();
+              true
+            },
+            None => false
+          }
+        },
+
+        RGBA8 => {
+          match self.get_offset(x, y) {
+            Some(offset) => {
+              *self.data.get_mut(offset + 3)  = color.pop().unwrap();
+              *self.data.get_mut(offset + 2)  = color.pop().unwrap();
+              *self.data.get_mut(offset + 1)  = color.pop().unwrap();
+              *self.data.get_mut(offset)      = color.pop().unwrap();
+              true
+            },
+            None => false
           }
         }
-        self.data = new_pixel_array;
-        self.color_type = GRAYSCALE8;
-        true
-      },
 
-      RGBA8     => {
-        let mut new_pixel_array: Vec<u8> = Vec::new();
-        for y in range(0, self.height){
-          for x in range(0, self.width){
-            let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
-            pixel_data.pop().unwrap();  // Unneeded alpha component
-            let b  = pixel_data.pop().unwrap();
-            let g  = pixel_data.pop().unwrap();
-            let r  = pixel_data.pop().unwrap();
-
-            let red     = r as int;
-            let green   = g as int;
-            let blue    = b as int;
-
-            let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
-            if luminance < 0 {
-              luminance = 0;
-            }
-            if luminance > 255 {
-              luminance = 255;
-            }
-
-            new_pixel_array.push(luminance as u8);
-          }
-        }
-        self.data = new_pixel_array;
-        self.color_type = GRAYSCALE8;
-        true
       }
-
     }
-  } 
 
+    #[allow(dead_code)]
+    pub fn convert_to_grayscale8(&mut self) -> bool {
+      match self.color_type {
 
-  #[allow(dead_code)]
-  pub fn convert_to_rgb8(&mut self) -> bool {
-    match self.color_type {
+        GRAYSCALE8 => {
+          println!("Image already GRAYSCALE8");
+          return true
+        },
 
-      GRAYSCALE8 => {
-        let mut new_pixel_array: Vec<u8> = Vec::new();
-        for i in range(0, self.data.len()) {
-          let lum = self.data.get(i).clone();
-          new_pixel_array.push(lum);
-          new_pixel_array.push(lum);
-          new_pixel_array.push(lum);
-        }
-        self.data = new_pixel_array;
-        self.color_type = RGB8;
-        true
-      },
+        RGB8      => {
+          let mut new_pixel_array: Vec<u8> = Vec::new();
+          for y in range(0, self.height){
+            for x in range(0, self.width){
+              let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+              let b  = pixel_data.pop().unwrap();
+              let g  = pixel_data.pop().unwrap();
+              let r  = pixel_data.pop().unwrap();
 
-      RGB8      => {
-        println!("Image already RGB8");
-        return true
-      },
+              let red     = r as int;
+              let green   = g as int;
+              let blue    = b as int;
 
-      RGBA8     => {
-        let mut new_pixel_array: Vec<u8> = Vec::new();
-        for i in range(0, self.data.len()) {
-          if i % 4 ==3 {
-            continue;
+              let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
+              if luminance < 0 {
+                luminance = 0;
+              }
+              if luminance > 255 {
+                luminance = 255;
+              }
+
+              new_pixel_array.push(luminance as u8);
+            }
           }
-          let component = self.data.get(i).clone();
-          new_pixel_array.push(component);
+          self.data = new_pixel_array;
+          self.color_type = GRAYSCALE8;
+          true
+        },
+
+        RGBA8     => {
+          let mut new_pixel_array: Vec<u8> = Vec::new();
+          for y in range(0, self.height){
+            for x in range(0, self.width){
+              let mut pixel_data: Vec<u8> = self.get_pixel(x,y);
+              pixel_data.pop().unwrap();  // Unneeded alpha component
+              let b  = pixel_data.pop().unwrap();
+              let g  = pixel_data.pop().unwrap();
+              let r  = pixel_data.pop().unwrap();
+
+              let red     = r as int;
+              let green   = g as int;
+              let blue    = b as int;
+
+              let mut luminance = (0.2126 * red as f32 + 0.7152 * green as f32 + 0.0722 * blue as f32) as int;
+              if luminance < 0 {
+                luminance = 0;
+              }
+              if luminance > 255 {
+                luminance = 255;
+              }
+
+              new_pixel_array.push(luminance as u8);
+            }
+          }
+          self.data = new_pixel_array;
+          self.color_type = GRAYSCALE8;
+          true
         }
-        self.data = new_pixel_array;
-        self.color_type = RGB8;
-        true
+
       }
+    } 
 
-    }
-  }
 
-  #[allow(dead_code)]
-  pub fn convert_to_rgba8(&mut self) -> bool {
-    match self.color_type {
+    #[allow(dead_code)]
+    pub fn convert_to_rgb8(&mut self) -> bool {
+      match self.color_type {
 
-      GRAYSCALE8 => {
-        let mut new_pixel_array: Vec<u8> = Vec::new();
-        for i in range(0, self.data.len()) {
-          let lum = self.data.get(i).clone();
-          new_pixel_array.push(lum);
-          new_pixel_array.push(lum);
-          new_pixel_array.push(lum);
-          new_pixel_array.push(255 as u8);
+        GRAYSCALE8 => {
+          let mut new_pixel_array: Vec<u8> = Vec::new();
+          for i in range(0, self.data.len()) {
+            let lum = self.data.get(i).clone();
+            new_pixel_array.push(lum);
+            new_pixel_array.push(lum);
+            new_pixel_array.push(lum);
+          }
+          self.data = new_pixel_array;
+          self.color_type = RGB8;
+          true
+        },
+
+        RGB8      => {
+          println!("Image already RGB8");
+          return true
+        },
+
+        RGBA8     => {
+          let mut new_pixel_array: Vec<u8> = Vec::new();
+          for i in range(0, self.data.len()) {
+            if i % 4 ==3 {
+              continue;
+            }
+            let component = self.data.get(i).clone();
+            new_pixel_array.push(component);
+          }
+          self.data = new_pixel_array;
+          self.color_type = RGB8;
+          true
         }
-        self.data = new_pixel_array;
-        self.color_type = RGBA8;
-        true
-      },
 
-      RGB8      => {
-        let mut new_pixel_array: Vec<u8> = Vec::new();
-        for y in range(0, self.height) {
-          for x in range(0, self.width) {
-            let mut pixel: Vec<u8> = self.get_pixel(x,y);
-            let b = pixel.pop().unwrap();
-            let g = pixel.pop().unwrap();
-            let r = pixel.pop().unwrap();
+      }
+    }
 
-            new_pixel_array.push(r);
-            new_pixel_array.push(g);
-            new_pixel_array.push(b);
+    #[allow(dead_code)]
+    pub fn convert_to_rgba8(&mut self) -> bool {
+      match self.color_type {
+
+        GRAYSCALE8 => {
+          let mut new_pixel_array: Vec<u8> = Vec::new();
+          for i in range(0, self.data.len()) {
+            let lum = self.data.get(i).clone();
+            new_pixel_array.push(lum);
+            new_pixel_array.push(lum);
+            new_pixel_array.push(lum);
             new_pixel_array.push(255 as u8);
           }
+          self.data = new_pixel_array;
+          self.color_type = RGBA8;
+          true
+        },
+
+        RGB8      => {
+          let mut new_pixel_array: Vec<u8> = Vec::new();
+          for y in range(0, self.height) {
+            for x in range(0, self.width) {
+              let mut pixel: Vec<u8> = self.get_pixel(x,y);
+              let b = pixel.pop().unwrap();
+              let g = pixel.pop().unwrap();
+              let r = pixel.pop().unwrap();
+
+              new_pixel_array.push(r);
+              new_pixel_array.push(g);
+              new_pixel_array.push(b);
+              new_pixel_array.push(255 as u8);
+            }
+          }
+          self.data = new_pixel_array;
+          self.color_type = RGBA8;
+          true
+        },
+
+        RGBA8     => {
+          println!("Image already RGBA8");
+          return true
         }
-        self.data = new_pixel_array;
-        self.color_type = RGBA8;
-        true
-      },
 
-      RGBA8     => {
-        println!("Image already RGBA8");
-        return true
       }
+    }  
 
-    }
-  }  
+  }
 
 }
-
 
 // BMP Image format
 /*trait BMP {
