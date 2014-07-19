@@ -764,12 +764,12 @@ mod tests {
       
       match image {
         Some(image) => {
-          let path_prefix: String = "../test/".to_string();
+          let path_prefix: String = "../test/bmp/".to_string();
           let path_to_write: String = path_prefix.append(*filename);
           assert!(write_bitmap(image, path_to_write.as_slice()));
         },
         None  => {
-          println!("Looks like you didn't get a valid image.");
+          fail!("Looks like you didn't get a valid image.");
         }
       }
 
