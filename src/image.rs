@@ -16,7 +16,7 @@ pub struct Image {
   pub width: uint,
   pub height: uint,
   pub color_type: ColorType,
-  data: Vec<u8>,
+  pub data: Vec<u8>,
 }
 
 impl Image {

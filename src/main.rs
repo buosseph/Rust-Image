@@ -10,6 +10,7 @@ use std::str;
 use std::uint;
 
 mod image;
+mod bmp;
 
 #[allow(dead_code)]
 static version: &'static str = "rustc 0.11.0-pre-nightly (380657557cb3793d39dfc0d2321fc946cb3496f5 2014-07-02 00:21:36 +0000)";
@@ -589,39 +590,52 @@ fn main() {
   }
   else {
 
-    
-      //let image = Image::read_bitmap(args[1]);
     /*
-      match image {
-        Some(mut image) => {
-          image.blur();
-          image.write_bitmap("image.bmp");
-        },
-        None  => {
-          println!("Looks like you didn't get a valid image.");
-        }
+    let image = bmp::read_bitmap(args.get(1).as_slice());
+    match image {
+      Some(mut image) => {
+        //image.blur();
+        bmp::write_bitmap(image, "../image.bmp");
+      },
+      None  => {
+        println!("Looks like you didn't get a valid image.");
       }
-    */
-    
-    /*for y in range(0, image.height) {
-      for x in range(0, image.width) {
-        match image.color_type {
-          GRAYSCALE8 => {
-            let i = x + image.width * y;
-            print!("({}) ", image.data[i]);
-          }
-          RGB8 => {
-            let pixel = image.get_pixel(x,y);
-            print!("{} ", pixel);  
-          },
-          RGBA8 => {
-            let pixel = image.get_pixel(x,y);
-            print!("{} ", pixel);  
-          }
-        }
-      }
-      print!("\n");
     }*/
+    
+    /*
+    match image {
+      Some(image) => {
+
+        match image.color_type {
+          GRAYSCALE8 => {},
+          RGB8 => {},
+          RGBA8 => {}
+        }
+
+        /*for y in range(0, image.height) {
+          for x in range(0, image.width) {
+            match image.color_type {
+              GRAYSCALE8 => {
+                let i = x + image.width * y;
+                print!("({}) ", image.data.get(i));
+              },
+              RGB8 => {
+                let pixel = image.get_pixel(x,y);
+                print!("{} ", pixel);  
+              },
+              RGBA8 => {
+                let pixel = image.get_pixel(x,y);
+                print!("{} ", pixel);  
+              },
+            }
+          }
+          print!("\n");
+        }*/
+
+      },
+      None => {},
+    }*/
+
     
 
     
