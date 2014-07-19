@@ -741,7 +741,7 @@ mod tests {
 
   // Reading: verify meta data
 
-  // Writing: write all test images to folder with no changes
+  // Writing: write all test images to folder with no changes, verify image are correct visually
   #[test]
   fn test_writing() {
     let test_images = vec!(
@@ -760,17 +760,21 @@ mod tests {
 
     for filename in test_images.iter() {
 
-      let path_to_file: &str =  *filename;
-      let image = read_bitmap(path_to_file);
+      let path_prefix: String = "../bmp/".to_string();
+      let path_to_file: String = path_prefix.append(*filename);
+      let image = read_bitmap(path_to_file.as_slice());
 
-      /*match image {
+      
+      match image {
         Some(image) => {
-          assert!(write_bitmap(image, concat!("../test/", filename)));
+          let path_prefix: String = "../test/".to_string();
+          let path_to_write: String = path_prefix.append(*filename);
+          assert!(write_bitmap(image, path_to_write.as_slice()));
         },
         None  => {
           println!("Looks like you didn't get a valid image.");
         }
-      }*/
+      }
 
     }
 
