@@ -340,14 +340,13 @@ impl Image {
 }
 
 
-/*
+pub trait PointProcessor {
 
-// Image processing traits and functions (Not implemented for all color types)
-trait PointProcessor {
   fn negative(&mut self);
   fn brighten(&mut self, bias: int);
   fn contrast(&mut self, gain: f32);
   fn saturate(&mut self, gain: f32);
+
 }
 
 impl PointProcessor for Image {
@@ -359,6 +358,7 @@ impl PointProcessor for Image {
     // Vectorize by 8     Time:  5118442 ns
     //let start = time::precise_time_ns();
 
+    // Look into optimizing with SIMD u8x16
 
     let mut i = 0;
     let length = self.data.len();
@@ -368,9 +368,9 @@ impl PointProcessor for Image {
     match self.color_type {
       RGBA8 => {
         while i < length {
-          self.data[i] = 255 - self.data[i];
-          self.data[i+1] = 255 - self.data[i+1];
-          self.data[i+2] = 255 - self.data[i+2];
+          *self.data.get_mut(i) = 255 - *self.data.get(i);
+          *self.data.get_mut(i+1) = 255 - *self.data.get(i+1);
+          *self.data.get_mut(i+2) = 255 - *self.data.get(i+2);
 
           i += 4;
         }
@@ -378,19 +378,19 @@ impl PointProcessor for Image {
 
       _ => {
         while i < difference {
-          self.data[i] = 255 - self.data[i];
-          self.data[i+1] = 255 - self.data[i+1];
-          self.data[i+2] = 255 - self.data[i+2];
-          self.data[i+3] = 255 - self.data[i+3];
-          self.data[i+4] = 255 - self.data[i+4];
-          self.data[i+5] = 255 - self.data[i+5];
-          self.data[i+6] = 255 - self.data[i+6];
-          self.data[i+7] = 255 - self.data[i+7];
+          *self.data.get_mut(i) = 255 - *self.data.get(i);
+          *self.data.get_mut(i+1) = 255 - *self.data.get(i+1);
+          *self.data.get_mut(i+2) = 255 - *self.data.get(i+2);
+          *self.data.get_mut(i+3) = 255 - *self.data.get(i+3);
+          *self.data.get_mut(i+4) = 255 - *self.data.get(i+4);
+          *self.data.get_mut(i+5) = 255 - *self.data.get(i+5);
+          *self.data.get_mut(i+6) = 255 - *self.data.get(i+6);
+          *self.data.get_mut(i+7) = 255 - *self.data.get(i+7);
           i += 8;
         }
         if remainder > 0 {
           for i in range(difference, length) {
-            self.data[i] = 255 - self.data[i];
+            *self.data.get_mut(i) = 255 - *self.data.get(i);
           }
         }      
       }
@@ -416,14 +416,14 @@ impl PointProcessor for Image {
           GRAYSCALE8 => {
 
             let offset:  uint = x + self.width * y;
-            let pixel_data: u8 = self.data[offset];
+            let pixel_data: u8 = *self.data.get(offset);
 
             let mut lum = pixel_data as int + bias;
 
             if lum > 255 {lum = 255;}
             if lum < 0 {lum = 0;}
 
-            self.data[offset] = lum as u8;
+            *self.data.get_mut(offset) = lum as u8;
 
           },
           RGB8 => {
@@ -710,7 +710,8 @@ impl PointProcessor for Image {
     }
   }
 
-}*/
+}
+
 
 pub trait ConvolutionFilter {
   fn blur(&mut self);
@@ -1133,12 +1134,141 @@ mod tests {
 }
 
 #[cfg(test)]
-mod test_processing {
+mod processing_tests {
   use super::*;
   use bmp::*;
 
-  // All function results must be reviewed visually
+  #[test]
+  fn test_negative() {
 
+    let test_images = vec!(
+      "testimage_rgba_v5.bmp",
+      "testimage_rgb_v4.bmp",
+      "grayscale_v3.bmp",
+    );
+
+    for filename in test_images.iter() {
+
+      let path_prefix: String = "../bmp/".to_string();
+      let path_to_file: String = path_prefix.append(*filename);
+      let image = read_bitmap(path_to_file.as_slice());
+      
+      match image {
+        Some(mut image) => {
+          let path_prefix: String = "../test/image/".to_string();
+          let path_to_write: String = path_prefix.append("neg_").append(*filename);
+
+          image.negative();
+
+          assert!(write_bitmap(image, path_to_write.as_slice()));
+        },
+        None  => {
+          fail!("Looks like you didn't get a valid image.");
+        }
+      }
+
+    }
+
+  }
+
+  #[test]
+  fn test_brighten_bias() {
+
+    let test_images = vec!(
+      "testimage_rgba_v5.bmp",
+      "testimage_rgb_v4.bmp",
+      "grayscale_v3.bmp",
+    );
+
+    for filename in test_images.iter() {
+
+      let path_prefix: String = "../bmp/".to_string();
+      let path_to_file: String = path_prefix.append(*filename);
+      let image = read_bitmap(path_to_file.as_slice());
+      
+      match image {
+        Some(mut image) => {
+          let path_prefix: String = "../test/image/".to_string();
+          let path_to_write: String = path_prefix.append("bright_bias_").append(*filename);
+
+          image.brighten(100i);
+
+          assert!(write_bitmap(image, path_to_write.as_slice()));
+        },
+        None  => {
+          fail!("Looks like you didn't get a valid image.");
+        }
+      }
+
+    }
+
+  }
+
+  #[test]
+  fn test_contrast_gain() {
+
+    let test_images = vec!(
+      "testimage_rgba_v5.bmp",
+      "testimage_rgb_v4.bmp",
+      //"grayscale_v3.bmp",
+    );
+
+    for filename in test_images.iter() {
+
+      let path_prefix: String = "../bmp/".to_string();
+      let path_to_file: String = path_prefix.append(*filename);
+      let image = read_bitmap(path_to_file.as_slice());
+      
+      match image {
+        Some(mut image) => {
+          let path_prefix: String = "../test/image/".to_string();
+          let path_to_write: String = path_prefix.append("contrast_gain_").append(*filename);
+
+          image.contrast(1.8f32);
+
+          assert!(write_bitmap(image, path_to_write.as_slice()));
+        },
+        None  => {
+          fail!("Looks like you didn't get a valid image.");
+        }
+      }
+
+    }
+
+  }
+
+  #[test]
+  fn test_saturate_gain() {
+
+    let test_images = vec!(
+      "testimage_rgba_v5.bmp",
+      "testimage_rgb_v4.bmp",
+      //"grayscale_v3.bmp",
+    );
+
+    for filename in test_images.iter() {
+
+      let path_prefix: String = "../bmp/".to_string();
+      let path_to_file: String = path_prefix.append(*filename);
+      let image = read_bitmap(path_to_file.as_slice());
+      
+      match image {
+        Some(mut image) => {
+          let path_prefix: String = "../test/image/".to_string();
+          let path_to_write: String = path_prefix.append("saturate_gain_").append(*filename);
+
+          image.saturate(1.8f32);
+
+          assert!(write_bitmap(image, path_to_write.as_slice()));
+        },
+        None  => {
+          fail!("Looks like you didn't get a valid image.");
+        }
+      }
+
+    }
+
+  }
 
   #[test]
   fn test_blur() {
