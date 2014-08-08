@@ -9,6 +9,19 @@ use std::io::File;
 use std::os;
 use std::str;
 use std::uint;
+use std::mem::swap;
+
+
+/**
+
+  Idea:
+  - Impelement separate PixelArray struct (aka 2D Vec, with Pixels just represented as Vec<u8> to avoid variants)
+  - Should be able to still use same implementations of processing traits and allow easier with diffent pixel getters and setters
+  - Can 'flatten' to convert to Image struct
+  - Implement pixel sorting trait using Asendorf's algorithms and allow user to override traits?
+
+**/
+
 
 
 pub enum ColorType {
@@ -180,6 +193,7 @@ impl Image {
     }
   }
 
+
   #[allow(dead_code)]
   pub fn convert_to_grayscale8(&mut self) -> bool {
     match self.color_type {
@@ -249,8 +263,7 @@ impl Image {
       }
 
     }
-  } 
-
+  }
 
   #[allow(dead_code)]
   pub fn convert_to_rgb8(&mut self) -> bool {
@@ -335,10 +348,75 @@ impl Image {
       }
 
     }
-  }  
+  }
 
 }
 
+pub trait Transform {
+  fn flip_vertical(&mut self);
+}
+
+impl Transform for Image {
+  fn flip_vertical(&mut self) {
+
+    match self.color_type {
+      GRAYSCALE8 => {
+
+        for row in range(0, self.height/2) {
+
+          let top_row_start = row * self.width;
+          let bottom_row_start = self.data.len() - top_row_start - self.width;
+
+          for offset in range(0, self.width) {
+
+            let temp = *self.data.get_mut(top_row_start + offset);
+            *self.data.get_mut(top_row_start + offset) = *self.data.get_mut(bottom_row_start + offset);
+            *self.data.get_mut(bottom_row_start + offset) = temp;
+
+          }
+        }
+
+      },
+
+      RGB8 => {
+
+        for row in range(0, self.height/2) {
+
+          let top_row_start = row * self.width * 3;
+          let bottom_row_start = self.data.len() - top_row_start - self.width * 3;
+
+          for offset in range(0, self.width * 3) {
+
+            let temp = *self.data.get_mut(top_row_start + offset);
+            *self.data.get_mut(top_row_start + offset) = *self.data.get_mut(bottom_row_start + offset);
+            *self.data.get_mut(bottom_row_start + offset) = temp;
+
+          }
+        }
+
+      },
+
+      RGBA8 => {
+
+        for row in range(0, self.height/2) {
+
+          let top_row_start = row * self.width * 4;
+          let bottom_row_start = self.data.len() - top_row_start - self.width * 4;
+
+          for offset in range(0, self.width * 4) {
+
+            let temp = *self.data.get_mut(top_row_start + offset);
+            *self.data.get_mut(top_row_start + offset) = *self.data.get_mut(bottom_row_start + offset);
+            *self.data.get_mut(bottom_row_start + offset) = temp;
+
+          }
+        }
+
+      },
+    }
+
+  }
+}
 
 pub trait PointProcessor {
 
@@ -901,7 +979,7 @@ impl ConvolutionFilter for Image {
 
 
 
-
+/*
 // Use actual images to test functions
 #[cfg(test)] 
 mod tests {
@@ -1132,12 +1210,46 @@ mod tests {
   }
 
 }
+*/
 
 #[cfg(test)]
 mod processing_tests {
   use super::*;
   use bmp::*;
 
+  #[test]
+  fn test_flip_vertical() {
+
+    let test_images = vec!(
+      "testimage_rgba_v5.bmp",
+      "testimage_rgb_v4.bmp",
+      "grayscale_v3.bmp",
+    );
+
+    for filename in test_images.iter() {
+
+      let path_prefix: String = "../bmp/".to_string();
+      let path_to_file: String = path_prefix.append(*filename);
+      let image = read_bitmap(path_to_file.as_slice());
+      
+      match image {
+        Some(mut image) => {
+          let path_prefix: String = "../test/image/".to_string();
+          let path_to_write: String = path_prefix.append("vflip_").append(*filename);
+
+          image.flip_vertical();
+
+          assert!(write_bitmap(image, path_to_write.as_slice()));
+        },
+        None  => {
+          fail!("Looks like you didn't get a valid image.");
+        }
+      }
+
+    }
+
+  }
+/*
   #[test]
   fn test_negative() {
 
@@ -1302,5 +1414,5 @@ mod processing_tests {
     }
 
   }
-
+*/
 }
