@@ -9,7 +9,6 @@ use std::io::File;
 use std::os;
 use std::str;
 use std::uint;
-use std::mem::swap;
 
 
 /**
@@ -354,9 +353,11 @@ impl Image {
 
 pub trait Transform {
   fn flip_vertical(&mut self);
+  fn flip_horizontal(&mut self);
 }
 
 impl Transform for Image {
+
   fn flip_vertical(&mut self) {
 
     match self.color_type {
@@ -416,6 +417,28 @@ impl Transform for Image {
     }
 
   }
+
+  fn flip_horizontal(&mut self) {
+
+    let width = self.width;
+    for y in range(0, self.height) {
+
+      // Spawn tasks to do each row separately (in parallel)
+
+      for x in range(0, width/2) {
+
+        let mut left_pixel = self.get_pixel(x, y);
+        let mut right_pixel = self.get_pixel(width - 1 - x, y);
+
+        self.set_pixel(x, y, right_pixel);
+        self.set_pixel(width - 1 - x, y, left_pixel);
+
+      }
+
+    }
+
+  }
+
 }
 
 pub trait PointProcessor {
@@ -979,7 +1002,7 @@ impl ConvolutionFilter for Image {
 
 
 
-/*
+
 // Use actual images to test functions
 #[cfg(test)] 
 mod tests {
@@ -1210,7 +1233,7 @@ mod tests {
   }
 
 }
-*/
+
 
 #[cfg(test)]
 mod processing_tests {
@@ -1249,7 +1272,40 @@ mod processing_tests {
     }
 
   }
-/*
+
+  #[test]
+  fn test_flip_horizontal() {
+
+    let test_images = vec!(
+      "testimage_rgba_v5.bmp",
+      "testimage_rgb_v4.bmp",
+      "grayscale_v3.bmp",
+    );
+
+    for filename in test_images.iter() {
+
+      let path_prefix: String = "../bmp/".to_string();
+      let path_to_file: String = path_prefix.append(*filename);
+      let image = read_bitmap(path_to_file.as_slice());
+      
+      match image {
+        Some(mut image) => {
+          let path_prefix: String = "../test/image/".to_string();
+          let path_to_write: String = path_prefix.append("hflip_").append(*filename);
+
+          image.flip_horizontal();
+
+          assert!(write_bitmap(image, path_to_write.as_slice()));
+        },
+        None  => {
+          fail!("Looks like you didn't get a valid image.");
+        }
+      }
+
+    }
+
+  }
+
   #[test]
   fn test_negative() {
 
@@ -1414,5 +1470,5 @@ mod processing_tests {
     }
 
   }
-*/
+
 }
