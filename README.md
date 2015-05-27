@@ -1,3 +1,5 @@
+## This library was part of a course project and is deprecated. If you're looking for an image library to use try [image](https://github.com/PistonDevelopers/image)
+
 #Rust-Image
 
 A basic image processing library written in Rust.
